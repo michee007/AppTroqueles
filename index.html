@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestión de Troqueles</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="style.css">
+    
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+</head>
+<body>
+    <header class="top-nav">
+        <div class="logo">
+            <i class="fa-solid fa-layer-group"></i>
+            <h1>TroquelApp</h1>
+        </div>
+        <div class="header-actions">
+            <div class="search-box">
+                <i class="fa-solid fa-search"></i>
+                <input type="text" id="searchInput" placeholder="Buscar por nombre, cliente, ref...">
+            </div>
+            <button class="btn-icon" style="color: var(--dark); font-size: 1.2rem; margin-right: 10px;" onclick="toggleTheme()" id="themeToggleBtn"><i class="fa-solid fa-moon"></i></button>
+            <button class="btn btn-secondary" onclick="exportarExcel()"><i class="fa-solid fa-file-excel"></i> Excel</button>
+            <button class="btn btn-danger" onclick="exportarListaPDF()"><i class="fa-solid fa-file-pdf"></i> PDF</button>
+            <button class="btn btn-primary" onclick="abrirModalNuevo()"><i class="fa-solid fa-plus"></i> Nuevo Troquel</button>
+        </div>
+    </header>
+
+    <main class="container">
+        <div class="stats-bar">
+            <div class="stat-card">
+                <h3>Total Activos</h3>
+                <p id="statActivos">0</p>
+            </div>
+            <div class="stat-card stat-depurados">
+                <h3>Total Depurados</h3>
+                <p id="statDepurados">0</p>
+            </div>
+        </div>
+
+        <div class="tabs-container">
+            <button class="tab-btn active" onclick="cambiarPestana('activos')" id="tabActivos"><i class="fa-solid fa-check-circle"></i> Troqueles Activos</button>
+            <button class="tab-btn" onclick="cambiarPestana('depurados')" id="tabDepurados"><i class="fa-solid fa-trash-can"></i> Troqueles Depurados</button>
+        </div>
+
+        <div class="table-container" id="areaImprimirTabla">
+            <div class="print-header" style="display: none;">
+                <h2 id="printTitle">Listado de Troqueles</h2>
+                <p>Generado el: <span id="printDate"></span></p>
+            </div>
+            <table id="troquelesTable">
+                <thead>
+                    <tr>
+                        <th class="no-print">Imagen</th>
+                        <th>Nombre</th>
+                        <th>Referencia</th>
+                        <th>Cliente</th>
+                        <th>Ubicación</th>
+                        <th>Stock</th>
+                        <th>Estado</th>
+                        <th class="no-print">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody id="listaTroqueles">
+                    <!-- Los datos se insertarán aquí dinámicamente -->
+                </tbody>
+            </table>
+            <div id="emptyState" class="empty-state" style="display: none;">
+                <i class="fa-solid fa-box-open"></i>
+                <h2>No hay troqueles en esta sección</h2>
+            </div>
+        </div>
+    </main>
+
+    <!-- MODAL NUEVO/EDITAR -->
+    <div id="modalFormulario" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modalTitle">Registrar Nuevo Troquel</h2>
+                <button class="close-btn" onclick="cerrarModalFormulario()"><i class="fa-solid fa-times"></i></button>
+            </div>
+            <div class="modal-body">
+                <form id="formTroquel" onsubmit="guardarTroquel(event)">
+                    <input type="hidden" id="troquelId">
+                    
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label>Nombre del Troquel *</label>
+                            <input type="text" id="nombre" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Referencia *</label>
+                            <input type="text" id="referencia" required>
+                        </div>
+                        <div class="form-group">
+                            <label>Cliente</label>
+                            <input type="text" id="cliente">
+                        </div>
+                        <div class="form-group">
+                            <label>Ubicación (Estante/Fila)</label>
+                            <input type="text" id="ubicacion">
+                        </div>
+                        <div class="form-group">
+                            <label>Cantidad (Stock)</label>
+                            <input type="number" id="cantidad" min="0" value="1">
+                        </div>
+                        <div class="form-group">
+                            <label>Número de Cavidades</label>
+                            <input type="number" id="cavidades" min="1" value="1">
+                        </div>
+                        <div class="form-group">
+                            <label>Costo Estimado ($)</label>
+                            <input type="number" step="0.01" id="costo">
+                        </div>
+                        <div class="form-group">
+                            <label>Proveedor/Fabricante</label>
+                            <input type="text" id="proveedor">
+                        </div>
+                        <div class="form-group">
+                            <label>Fecha de Ingreso</label>
+                            <input type="date" id="fechaIngreso">
+                        </div>
+                        <div class="form-group">
+                            <label>Estado del Troquel</label>
+                            <select id="estadoDepurado">
+                                <option value="Activo">Activo</option>
+                                <option value="En Mantenimiento">En Mantenimiento</option>
+                                <option value="Depurado">Depurado (Inactivo)</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Fecha de Depuración</label>
+                            <input type="date" id="fechaDepuracion">
+                        </div>
+                    </div>
+
+                    <div class="form-group full-width">
+                        <label>Imágenes (Soporta cámara móvil)</label>
+                        <div class="file-upload-wrapper">
+                            <input type="file" id="imagenesInput" accept="image/*" capture="environment" multiple>
+                            <div class="file-upload-design">
+                                <i class="fa-solid fa-camera"></i>
+                                <p>Haz clic para abrir cámara o subir fotos</p>
+                            </div>
+                        </div>
+                        <div id="previewImages" class="image-preview-container"></div>
+                    </div>
+
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-outline" onclick="cerrarModalFormulario()">Cancelar</button>
+                        <button type="submit" class="btn btn-primary"><i class="fa-solid fa-save"></i> Guardar</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL DETALLE (HOJA DE VIDA) -->
+    <div id="modalDetalle" class="modal">
+        <div class="modal-content detalle-content">
+            <div class="modal-header">
+                <h2>Hoja de Vida del Troquel</h2>
+                <div class="header-right">
+                    <button class="btn btn-secondary btn-sm" onclick="exportarDetallePDF()"><i class="fa-solid fa-file-pdf"></i> PDF</button>
+                    <button class="close-btn" onclick="cerrarModalDetalle()"><i class="fa-solid fa-times"></i></button>
+                </div>
+            </div>
+            <div class="modal-body" id="printDetalleArea">
+                <div class="detalle-header">
+                    <h1 id="detNombre">Nombre</h1>
+                    <span class="badge" id="detRef">REF-001</span>
+                </div>
+                
+                <div class="detalle-grid">
+                    <div class="info-card"><p class="label">Cliente</p><p class="value" id="detCliente">-</p></div>
+                    <div class="info-card"><p class="label">Ubicación</p><p class="value" id="detUbicacion">-</p></div>
+                    <div class="info-card"><p class="label">Cantidad</p><p class="value" id="detCantidad">-</p></div>
+                    <div class="info-card"><p class="label">Cavidades</p><p class="value" id="detCavidades">-</p></div>
+                    <div class="info-card"><p class="label">Costo</p><p class="value" id="detCosto">-</p></div>
+                    <div class="info-card"><p class="label">Proveedor</p><p class="value" id="detProveedor">-</p></div>
+                    <div class="info-card"><p class="label">Fecha Ingreso</p><p class="value" id="detFechaIngreso">-</p></div>
+                    <div class="info-card"><p class="label">Estado</p><p class="value badge-status" id="detEstado">-</p></div>
+                </div>
+
+                <div class="galeria-seccion mt-4 no-print-pdf">
+                    <h3>Galería de Imágenes</h3>
+                    <div id="detGaleria" class="image-gallery"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

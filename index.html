@@ -3,15 +3,22 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gestión de Troqueles</title>
+    <meta name="description" content="Sistema de gestión y control de troqueles industriales. Registra, busca y exporta la hoja de vida de tus troqueles.">
+    <title>Gestión de Troqueles — TroquelApp</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="style.css">
     
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <!-- jsPDF: generación de PDFs desde datos sin depender del DOM -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 </head>
 <body>
+    <!-- Toast Container -->
+    <div class="toast-container" id="toastContainer"></div>
+
     <header class="top-nav">
         <div class="logo">
             <i class="fa-solid fa-layer-group"></i>
@@ -20,130 +27,172 @@
         <div class="header-actions">
             <div class="search-box">
                 <i class="fa-solid fa-search"></i>
-                <input type="text" id="searchInput" placeholder="Buscar por nombre, cliente, ref...">
+                <input type="text" id="searchInput" placeholder="Buscar por nombre, cliente, ref..." aria-label="Buscar troqueles">
             </div>
-            <button class="btn-icon" style="color: var(--dark); font-size: 1.2rem; margin-right: 10px;" onclick="toggleTheme()" id="themeToggleBtn"><i class="fa-solid fa-moon"></i></button>
-            <button class="btn btn-secondary" onclick="exportarExcel()"><i class="fa-solid fa-file-excel"></i> Excel</button>
-            <button class="btn btn-danger" onclick="exportarListaPDF()"><i class="fa-solid fa-file-pdf"></i> PDF</button>
-            <button class="btn btn-primary" onclick="abrirModalNuevo()"><i class="fa-solid fa-plus"></i> Nuevo Troquel</button>
+            <button class="btn-icon" style="color: var(--dark); font-size: 1.2rem; margin-right: 10px;" onclick="toggleTheme()" id="themeToggleBtn" aria-label="Cambiar tema"><i class="fa-solid fa-moon"></i></button>
+            <button class="btn btn-secondary" onclick="exportarExcel()" aria-label="Exportar a Excel"><i class="fa-solid fa-file-excel"></i> Excel</button>
+            <button class="btn btn-danger" onclick="exportarListaPDF()" aria-label="Exportar a PDF"><i class="fa-solid fa-file-pdf"></i> PDF</button>
+            <button class="btn btn-outline" onclick="imprimirPantalla()" aria-label="Imprimir lista"><i class="fa-solid fa-print"></i> Imprimir</button>
+            
+            <button class="btn btn-primary" onclick="abrirModalNuevo()" aria-label="Registrar nuevo troquel"><i class="fa-solid fa-plus"></i> Nuevo Troquel</button>
         </div>
     </header>
 
-    <main class="container">
-        <div class="stats-bar">
-            <div class="stat-card">
-                <h3>Total Activos</h3>
+    <main class="container" id="mainContent" role="main">
+        <!-- Storage Warning -->
+        <div class="storage-warning" id="storageWarning" role="alert" aria-live="polite">
+            <i class="fa-solid fa-circle-exclamation" aria-hidden="true"></i>
+            <span id="storageText">Calculando espacio...</span>
+            <div class="storage-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+                <div class="storage-bar-fill" id="storageBarFill" style="width: 0%"></div>
+            </div>
+        </div>
+
+        <div class="stats-bar" aria-label="Resumen de inventory">
+            <div class="stat-card" id="cardActivos" onclick="filtrarPorDashboard('activos')">
+                <h3>Activos</h3>
                 <p id="statActivos">0</p>
             </div>
-            <div class="stat-card stat-depurados">
-                <h3>Total Depurados</h3>
+            <div class="stat-card stat-mantenimiento" id="cardMantenimiento" onclick="filtrarPorDashboard('mantenimiento')">
+                <h3>Mantenimiento</h3>
+                <p id="statMantenimiento">0</p>
+            </div>
+            <div class="stat-card stat-depurados" id="cardDepurados" onclick="filtrarPorDashboard('depurados')">
+                <h3>Depurados</h3>
                 <p id="statDepurados">0</p>
             </div>
         </div>
 
-        <div class="tabs-container">
-            <button class="tab-btn active" onclick="cambiarPestana('activos')" id="tabActivos"><i class="fa-solid fa-check-circle"></i> Troqueles Activos</button>
-            <button class="tab-btn" onclick="cambiarPestana('depurados')" id="tabDepurados"><i class="fa-solid fa-trash-can"></i> Troqueles Depurados</button>
+        <div class="tabs-container" role="tablist" aria-label="Secciones de troqueles">
+            <button class="tab-btn active" onclick="cambiarPestana('activos')" id="tabActivos" role="tab" aria-selected="true" aria-controls="tableContainer"><i class="fa-solid fa-boxes-stacked"></i> Activos</button>
+            <button class="tab-btn" onclick="cambiarPestana('depurados')" id="tabDepurados" role="tab" aria-selected="false" aria-controls="tableContainer"><i class="fa-solid fa-archive"></i> Depurados</button>
         </div>
 
-        <div class="table-container" id="areaImprimirTabla">
-            <div class="print-header" style="display: none;">
-                <h2 id="printTitle">Listado de Troqueles</h2>
-                <p>Generado el: <span id="printDate"></span></p>
+        <div class="table-container" id="tableContainer" role="tabpanel" aria-labelledby="tabActivos">
+            <div class="print-header" style="display: none;" aria-hidden="true">
+                <h2 id="printTitle">Listado de Troqueles en Inventario</h2>
+                <div class="print-meta" id="printDate"></div>
+                <div class="print-extra">
+                    <span>Bodega: <strong id="printBodega">PRINCIPAL</strong></span>
+                    <span>Estado: <strong id="printEstado">ACTIVOS</strong></span>
+                </div>
             </div>
             <table id="troquelesTable">
                 <thead>
                     <tr>
-                        <th class="no-print">Imagen</th>
-                        <th>Nombre</th>
-                        <th>Referencia</th>
-                        <th>Cliente</th>
-                        <th>Ubicación</th>
-                        <th>Stock</th>
-                        <th>Estado</th>
-                        <th class="no-print">Acciones</th>
+                        <th class="no-print no-sort">Imagen</th>
+                        <th data-sort="nombre" scope="col">Nombre <i class="fa-solid fa-sort sort-icon"></i></th>
+                        <th data-sort="referencia" scope="col">Referencia <i class="fa-solid fa-sort sort-icon"></i></th>
+                        <th data-sort="cliente" scope="col">Cliente <i class="fa-solid fa-sort sort-icon"></i></th>
+                        <th data-sort="ubicacion" scope="col">Ubicación <i class="fa-solid fa-sort sort-icon"></i></th>
+                        <th data-sort="cantidad" scope="col">Stock <i class="fa-solid fa-sort sort-icon"></i></th>
+                        <th data-sort="costo" scope="col">Costo <i class="fa-solid fa-sort sort-icon"></i></th>
+                        <th data-sort="estadoDepurado" scope="col">Estado <i class="fa-solid fa-sort sort-icon"></i></th>
+                        <th class="no-print no-sort">Acciones</th>
                     </tr>
                 </thead>
                 <tbody id="listaTroqueles">
                     <!-- Los datos se insertarán aquí dinámicamente -->
                 </tbody>
             </table>
+            <div id="printSummary" class="print-summary" style="display: none;" aria-hidden="true"></div>
+            <nav id="paginationContainer" class="pagination" aria-label="Navegación de páginas"></nav>
             <div id="emptyState" class="empty-state" style="display: none;">
-                <i class="fa-solid fa-box-open"></i>
-                <h2>No hay troqueles en esta sección</h2>
+                <i class="fa-solid fa-folder-open" aria-hidden="true"></i>
+                <h2>No se encontraron troqueles</h2>
+                <p>Prueba con otros términos de búsqueda o añade uno nuevo.</p>
             </div>
         </div>
     </main>
 
     <!-- MODAL NUEVO/EDITAR -->
-    <div id="modalFormulario" class="modal">
+    <div id="modalFormulario" class="modal" role="dialog" aria-labelledby="modalTitle">
         <div class="modal-content">
             <div class="modal-header">
                 <h2 id="modalTitle">Registrar Nuevo Troquel</h2>
-                <button class="close-btn" onclick="cerrarModalFormulario()"><i class="fa-solid fa-times"></i></button>
+                <button class="close-btn" onclick="cerrarModalFormulario()" aria-label="Cerrar formulario"><i class="fa-solid fa-times"></i></button>
             </div>
             <div class="modal-body">
-                <form id="formTroquel" onsubmit="guardarTroquel(event)">
+                <form id="formTroquel" onsubmit="guardarTroquel(event)" novalidate>
                     <input type="hidden" id="troquelId">
                     
                     <div class="form-grid">
-                        <div class="form-group">
-                            <label>Nombre del Troquel *</label>
+                        <div class="form-group" id="grupoNombre">
+                            <label for="nombre">Nombre del Troquel *</label>
                             <input type="text" id="nombre" required>
+                            <span class="field-error" id="errorNombre">El nombre es obligatorio.</span>
                         </div>
-                        <div class="form-group">
-                            <label>Referencia *</label>
+                        <div class="form-group" id="grupoReferencia">
+                            <label for="referencia">Referencia *</label>
                             <input type="text" id="referencia" required>
+                            <span class="field-error" id="errorReferencia">La referencia es obligatoria y debe ser única.</span>
                         </div>
                         <div class="form-group">
-                            <label>Cliente</label>
+                            <label for="cliente">Cliente</label>
                             <input type="text" id="cliente">
                         </div>
                         <div class="form-group">
-                            <label>Ubicación (Estante/Fila)</label>
+                            <label for="ubicacion">Ubicación (Estante/Fila)</label>
                             <input type="text" id="ubicacion">
                         </div>
-                        <div class="form-group">
-                            <label>Cantidad (Stock)</label>
+                        <div class="form-group" id="grupoCantidad">
+                            <label for="cantidad">Cantidad (Stock)</label>
                             <input type="number" id="cantidad" min="0" value="1">
+                            <span class="field-error" id="errorCantidad">La cantidad no puede ser negativa.</span>
                         </div>
                         <div class="form-group">
-                            <label>Número de Cavidades</label>
+                            <label for="cavidades">Número de Cavidades</label>
                             <input type="number" id="cavidades" min="1" value="1">
                         </div>
                         <div class="form-group">
-                            <label>Costo Estimado ($)</label>
+                            <label for="costo">Costo Estimado ($)</label>
                             <input type="number" step="0.01" id="costo">
                         </div>
                         <div class="form-group">
-                            <label>Proveedor/Fabricante</label>
+                            <label for="proveedor">Proveedor/Fabricante</label>
                             <input type="text" id="proveedor">
                         </div>
                         <div class="form-group">
-                            <label>Fecha de Ingreso</label>
+                            <label for="fechaIngreso">Fecha de Ingreso</label>
                             <input type="date" id="fechaIngreso">
                         </div>
                         <div class="form-group">
-                            <label>Estado del Troquel</label>
+                            <label for="estadoDepurado">Estado del Troquel</label>
                             <select id="estadoDepurado">
                                 <option value="Activo">Activo</option>
                                 <option value="En Mantenimiento">En Mantenimiento</option>
-                                <option value="Depurado">Depurado (Inactivo)</option>
                             </select>
-                        </div>
-                        <div class="form-group">
-                            <label>Fecha de Depuración</label>
-                            <input type="date" id="fechaDepuracion">
                         </div>
                     </div>
 
                     <div class="form-group full-width">
-                        <label>Imágenes (Soporta cámara móvil)</label>
-                        <div class="file-upload-wrapper">
+                        <label for="observaciones">Observaciones / Notas</label>
+                        <textarea id="observaciones" placeholder="Notas adicionales sobre el troquel..."></textarea>
+                    </div>
+
+                    <!-- Maintenance History Section in Form -->
+                    <div class="maintenance-section full-width">
+                        <h3><i class="fa-solid fa-wrench"></i> Historial de Mantenimiento</h3>
+                        <div id="mantenimientoListaForm">
+                            <!-- Maintenance entries will be added here -->
+                        </div>
+                        <button type="button" class="add-maint-btn" onclick="agregarEntradaMantenimiento()">
+                            <i class="fa-solid fa-plus"></i> Agregar Registro de Mantenimiento
+                        </button>
+                    </div>
+
+                    <div class="form-group full-width" style="margin-top: 1.5rem;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem;">
+                            <label style="margin: 0;">Imágenes (Soporta cámara móvil)</label>
+                            <button type="button" class="btn btn-outline" style="padding: 4px 8px; font-size: 0.8rem;" onclick="limpiarFotosTemp()">
+                                <i class="fa-solid fa-trash-can"></i> Limpiar Foto(s)
+                            </button>
+                        </div>
+                        <div class="file-upload-wrapper" id="dropZone">
                             <input type="file" id="imagenesInput" accept="image/*" capture="environment" multiple>
                             <div class="file-upload-design">
                                 <i class="fa-solid fa-camera"></i>
-                                <p>Haz clic para abrir cámara o subir fotos</p>
+                                <p>Haz clic para subir o <strong>reemplazar</strong> fotos</p>
                             </div>
                         </div>
                         <div id="previewImages" class="image-preview-container"></div>
@@ -158,14 +207,42 @@
         </div>
     </div>
 
+    <!-- MODAL DEPURACIÓN -->
+    <div id="modalDepuracion" class="modal" role="dialog" aria-labelledby="depModalTitle">
+        <div class="modal-content" style="max-width:500px;">
+            <div class="modal-header">
+                <h2 id="depModalTitle"><i class="fa-solid fa-archive"></i> Depurar Troquel</h2>
+                <button class="close-btn" onclick="cerrarModalDepuracion()" aria-label="Cerrar"><i class="fa-solid fa-times"></i></button>
+            </div>
+            <div class="modal-body">
+                <p style="margin-bottom:1rem;color:var(--text-light);">El troquel será movido a la sección de <strong>Depurados</strong>. Por favor indique la razón.</p>
+                <input type="hidden" id="depTroquelId">
+                <div class="form-group">
+                    <label for="depFecha">Fecha de Depuración</label>
+                    <input type="date" id="depFecha">
+                </div>
+                <div class="form-group" id="grupoRazon" style="margin-top:1rem;">
+                    <label for="depRazon">Razón de Depuración *</label>
+                    <textarea id="depRazon" required placeholder="Indique la razón por la cual se depura este troquel..." style="min-height:100px;"></textarea>
+                    <span class="field-error" id="errorRazon">La razón de depuración es obligatoria.</span>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline" onclick="cerrarModalDepuracion()">Cancelar</button>
+                <button type="button" class="btn btn-danger" onclick="confirmarDepuracion()"><i class="fa-solid fa-archive"></i> Depurar</button>
+            </div>
+        </div>
+    </div>
+
     <!-- MODAL DETALLE (HOJA DE VIDA) -->
-    <div id="modalDetalle" class="modal">
+    <div id="modalDetalle" class="modal" role="dialog" aria-labelledby="detNombreTitle">
         <div class="modal-content detalle-content">
             <div class="modal-header">
                 <h2>Hoja de Vida del Troquel</h2>
                 <div class="header-right">
-                    <button class="btn btn-secondary btn-sm" onclick="exportarDetallePDF()"><i class="fa-solid fa-file-pdf"></i> PDF</button>
-                    <button class="close-btn" onclick="cerrarModalDetalle()"><i class="fa-solid fa-times"></i></button>
+                    <button class="btn btn-secondary btn-sm" onclick="exportarDetallePDF()" aria-label="Exportar detalle a PDF"><i class="fa-solid fa-file-pdf"></i> PDF</button>
+                    <button class="btn btn-outline btn-sm" onclick="imprimirPantalla()" aria-label="Imprimir detalle"><i class="fa-solid fa-print"></i> Imprimir</button>
+                    <button class="close-btn" onclick="cerrarModalDetalle()" aria-label="Cerrar detalle"><i class="fa-solid fa-times"></i></button>
                 </div>
             </div>
             <div class="modal-body" id="printDetalleArea">
@@ -179,13 +256,36 @@
                     <div class="info-card"><p class="label">Ubicación</p><p class="value" id="detUbicacion">-</p></div>
                     <div class="info-card"><p class="label">Cantidad</p><p class="value" id="detCantidad">-</p></div>
                     <div class="info-card"><p class="label">Cavidades</p><p class="value" id="detCavidades">-</p></div>
-                    <div class="info-card"><p class="label">Costo</p><p class="value" id="detCosto">-</p></div>
-                    <div class="info-card"><p class="label">Proveedor</p><p class="value" id="detProveedor">-</p></div>
+                    <div class="info-card"><p class="label">Costo Unit.</p><p class="value" id="detCosto">$0</p></div>
+                    <div class="info-card"><p class="label">Proveedor</p><p class="value" id="detProveedor">N/A</p></div>
                     <div class="info-card"><p class="label">Fecha Ingreso</p><p class="value" id="detFechaIngreso">-</p></div>
-                    <div class="info-card"><p class="label">Estado</p><p class="value badge-status" id="detEstado">-</p></div>
+                    <div class="info-card"><p class="label">Estado</p><p class="value" id="detEstado">Activo</p></div>
                 </div>
 
-                <div class="galeria-seccion mt-4 no-print-pdf">
+                <!-- Depuration Info (shown only for depurated items) -->
+                <div class="detalle-notas" id="detDepuracionSection" style="display:none;">
+                    <h3><i class="fa-solid fa-archive"></i> Información de Depuración</h3>
+                    <div class="detalle-grid" style="margin-top:0.5rem;">
+                        <div class="info-card"><p class="label">Fecha de Depuración</p><p class="value" id="detFechaDepuracion">-</p></div>
+                        <div class="info-card" style="grid-column:1/-1;"><p class="label">Razón de Depuración</p><p class="value" id="detRazonDepuracion">-</p></div>
+                    </div>
+                </div>
+
+                <!-- Notes Section -->
+                <div class="detalle-notas" id="detNotasSection" style="display:none;">
+                    <h3><i class="fa-solid fa-sticky-note"></i> Observaciones</h3>
+                    <p id="detObservaciones"></p>
+                </div>
+
+                <!-- Maintenance History in Detail -->
+                <div class="detalle-mantenimiento" id="detMantenimientoSection" style="display:none;">
+                    <h3><i class="fa-solid fa-toolbox"></i> Historial de Mantenimiento</h3>
+                    <div class="maint-timeline" id="detMantenimientoLista">
+                        <!-- Entries will be rendered here -->
+                    </div>
+                </div>
+
+                <div class="galeria-seccion mt-4">
                     <h3>Galería de Imágenes</h3>
                     <div id="detGaleria" class="image-gallery"></div>
                 </div>
@@ -193,6 +293,37 @@
         </div>
     </div>
 
+    <!-- Lightbox -->
+    <div class="lightbox" id="lightbox" role="dialog" aria-label="Visor de imágenes">
+        <button class="lightbox-close" onclick="cerrarLightbox()" aria-label="Cerrar visor"><i class="fa-solid fa-times"></i></button>
+        <img id="lightboxImg" src="">
+    </div>
+
     <script src="app.js"></script>
+
+    <!-- Script de Auto-Refresco (Solo para desarrollo) -->
+    <script>
+        (function() {
+            let lastModified = null;
+            async function checkUpdate() {
+                try {
+                    // Solo funciona si se sirve a través de un servidor (http://...)
+                    if (window.location.protocol === 'file:') return;
+                    
+                    const response = await fetch(window.location.href, { method: 'HEAD', cache: 'no-cache' });
+                    const currentModified = response.headers.get('Last-Modified') || response.headers.get('Content-Length');
+                    
+                    if (lastModified && currentModified !== lastModified) {
+                        console.log('Cambio detectado, recargando...');
+                        window.location.reload();
+                    }
+                    lastModified = currentModified;
+                } catch (e) {
+                    // Ignorar errores de conexión
+                }
+            }
+            setInterval(checkUpdate, 2000); // Revisa cada 2 segundos
+        })();
+    </script>
 </body>
 </html>

@@ -29,6 +29,7 @@ AppTroqueles/
 ├── index.html     # Estructura de la aplicación, Modales y UI Principal.
 ├── style.css      # Hoja de estilos principal (modo claro y oscuro).
 ├── app.js         # Motor lógico, guardado y renderizado dinámico.
+├── schema.sql     # Script de generación de base de datos PostgreSQL.
 └── Documentacion.md # Este archivo.
 ```
 
@@ -90,3 +91,31 @@ Dado que es una "Progressive Web App" puramente estática, el despliegue es inme
 **Consideraciones para el futuro (Escalabilidad):**
 Si el inventario de troqueles crece masivamente o las imágenes son muy pesadas, el LocalStorage del navegador se quedará sin espacio (su límite suele ser de 5MB a 10MB). 
 En ese caso, el siguiente paso evolutivo recomendado es conectar `app.js` a **Firebase Firestore** (para los datos de texto) y **Firebase Storage** (para guardar los archivos de imagen), transformando la herramienta en un sistema Cloud multi-usuario real.
+
+---
+
+## 🗄️ Base de Datos (PostgreSQL - Normalizada)
+
+Para migrar de LocalStorage a una base de datos relacional robusta, se ha provisto un esquema normalizado en `schema.sql`. Este diseño está optimizado para **eliminar errores humanos** mediante el uso de catálogos.
+
+### Estructura de Tablas:
+
+1.  **Tablas Maestro (Catálogos):**
+    *   `clientes`: Gestión centralizada de dueños de troqueles.
+    *   `ubicaciones`: Estandarización de estanterías y bodegas.
+    *   `proveedores`: Directorio de fabricantes.
+    *   `responsables`: Personal técnico autorizado para mantenimientos.
+
+2.  **Tablas Transaccionales:**
+    *   **`troqueles`**: Tabla principal que referencia a los catálogos mediante llaves foráneas.
+    *   **`mantenimientos`**: Historial técnico vinculado a troqueles y responsables.
+    *   **`imagenes_troquel`**: Galería de fotos independiente.
+
+### Ventajas del Nuevo Esquema:
+*   **Cero Redundancia**: No se repiten nombres de clientes o ubicaciones.
+*   **Integridad**: Si se corrige el nombre de un proveedor en su tabla maestro, el cambio se refleja en todos sus troqueles.
+*   **Escalabilidad**: Facilita la generación de reportes por cliente o ubicación.
+
+### Instrucciones de Uso:
+1.  Crear una base de datos en PostgreSQL.
+2.  Ejecutar el script: `psql -d nombre_db -f schema.sql`

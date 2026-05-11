@@ -1,10 +1,13 @@
-let troqueles = JSON.parse(localStorage.getItem('troquelesApp_data')) || [];
+const API_URL = 'http://localhost:3000/api';
+let troqueles = []; // Ahora se carga desde la DB
+let catalogos = { clientes: [], ubicaciones: [], proveedores: [], responsables: [] };
 let imagenesTemp = [];
 let pestanaActual = 'activos';
-let filtroDashboard = 'todos'; // 'todos', 'mantenimiento'
+let filtroDashboard = 'todos';
 let lightboxImages = [];
 let lightboxIndex = 0;
 let troquelActivoId = null;
+let catalogoActual = 'clientes';
 
 // Globales para Sorting y Paginación
 let sortCol = 'nombre';
@@ -87,10 +90,11 @@ function debounce(func, wait) {
 }
 
 // === INICIALIZACIÓN ===
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     initTheme();
+    await cargarCatalogos();
+    await cargarDatos();
     actualizarVista();
-    actualizarIndicadorAlmacenamiento();
     initDragAndDrop();
     
     const debouncedSearch = debounce(() => {
@@ -132,36 +136,58 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 });
 
-// === ALMACENAMIENTO ===
-/**
- * Actualiza el indicador de uso de LocalStorage.
- */
-function actualizarIndicadorAlmacenamiento() {
+// === ALMACENAMIENTO (API) ===
+async function cargarDatos() {
     try {
-        const total = 5 * 1024 * 1024; // Límite típico de 5MB
-        const usado = JSON.stringify(localStorage).length;
-        const porcentaje = Math.min((usado / total) * 100, 100);
-        
-        const warning = document.getElementById('storageWarning');
-        const bar = document.getElementById('storageBarFill');
-        const text = document.getElementById('storageText');
-        const barContainer = document.querySelector('.storage-bar');
-        
-        if (bar) bar.style.width = porcentaje + '%';
-        if (barContainer) barContainer.setAttribute('aria-valuenow', Math.round(porcentaje));
-        if (text) text.textContent = `Almacenamiento: ${porcentaje.toFixed(1)}% utilizado`;
-        
-        if (warning) {
-            if (porcentaje > 70) {
-                warning.classList.add('visible');
-                if (bar) bar.classList.toggle('critical', porcentaje > 90);
-            } else {
-                warning.classList.remove('visible');
-            }
-        }
+        const response = await fetch(`${API_URL}/troqueles`);
+        troqueles = await response.json();
     } catch (err) {
-        console.warn('No se pudo calcular el espacio de almacenamiento', err);
+        console.error('Error al cargar troqueles:', err);
+        mostrarToast('Error de conexión con el servidor.', 'error');
     }
+}
+
+async function cargarCatalogos() {
+    try {
+        const [c, u, p, r] = await Promise.all([
+            fetch(`${API_URL}/clientes`).then(res => res.json()),
+            fetch(`${API_URL}/ubicaciones`).then(res => res.json()),
+            fetch(`${API_URL}/proveedores`).then(res => res.json()),
+            fetch(`${API_URL}/responsables`).then(res => res.json())
+        ]);
+        
+        catalogos = { clientes: c, ubicaciones: u, proveedores: p, responsables: r };
+        actualizarSelects();
+    } catch (err) {
+        console.error('Error al cargar catálogos:', err);
+    }
+}
+
+function actualizarSelects() {
+    llenarSelect('cliente_id', catalogos.clientes);
+    llenarSelect('ubicacion_id', catalogos.ubicaciones);
+    llenarSelect('proveedor_id', catalogos.proveedores);
+}
+
+function llenarSelect(id, data) {
+    const select = document.getElementById(id);
+    if (!select) return;
+    const valActual = select.value;
+    select.innerHTML = `<option value="">-- Seleccionar --</option>`;
+    data.forEach(item => {
+        const opt = document.createElement('option');
+        opt.value = item.id;
+        opt.textContent = item.nombre;
+        select.appendChild(opt);
+    });
+    select.value = valActual;
+}
+
+async function guardarDatos() {
+    // Esta función ahora es redundante ya que cada acción hace su propio fetch,
+    // pero la mantenemos para compatibilidad con llamadas existentes o recarga.
+    await cargarDatos();
+    actualizarVista();
 }
 
 // === PESTAÑAS Y DASHBOARD ===
@@ -260,9 +286,9 @@ function obtenerDatosFiltrados() {
     if (query.trim() !== '') {
         filtrados = filtrados.filter(t =>
             t.nombre.toLowerCase().includes(query) ||
-            (t.cliente && t.cliente.toLowerCase().includes(query)) ||
+            (t.cliente_nombre && t.cliente_nombre.toLowerCase().includes(query)) ||
             t.referencia.toLowerCase().includes(query) ||
-            (t.proveedor && t.proveedor.toLowerCase().includes(query))
+            (t.proveedor_nombre && t.proveedor_nombre.toLowerCase().includes(query))
         );
     }
     
@@ -382,11 +408,11 @@ function renderTabla(datos, ignorarPaginacion = false, mostrarTotal = false) {
             </td>
             <td><strong>${escapeHTML(troquel.nombre)}</strong></td>
             <td><code>${escapeHTML(troquel.referencia)}</code></td>
-            <td>${escapeHTML(troquel.cliente) || '<span class="text-light">N/A</span>'}</td>
-            <td>${escapeHTML(troquel.ubicacion) || '<span class="text-light">-</span>'}</td>
+            <td>${escapeHTML(troquel.cliente_nombre) || '<span class="text-light">N/A</span>'}</td>
+            <td>${escapeHTML(troquel.ubicacion_nombre) || '<span class="text-light">-</span>'}</td>
             <td>${troquel.cantidad}</td>
             <td>${formatCurrency(valorAMostrar)}</td>
-            <td><span class="badge-status ${claseEstado}">${escapeHTML(troquel.estadoDepurado) || 'Activo'}</span></td>
+            <td><span class="badge-status ${claseEstado}">${escapeHTML(troquel.estado) || 'Activo'}</span></td>
             <td class="no-print">${botonesAccion}</td>`;
         listaTroqueles.appendChild(tr);
     });
@@ -655,32 +681,33 @@ function guardarTroquel(e) {
         id: id,
         nombre: nombre,
         referencia: referencia,
-        cliente: document.getElementById('cliente').value,
-        ubicacion: document.getElementById('ubicacion').value,
+        cliente_id: parseInt(document.getElementById('cliente_id').value) || null,
+        ubicacion_id: parseInt(document.getElementById('ubicacion_id').value) || null,
+        proveedor_id: parseInt(document.getElementById('proveedor_id').value) || null,
         cantidad: cantidad,
         cavidades: parseInt(document.getElementById('cavidades').value) || 0,
         costo: costoVal,
-        proveedor: document.getElementById('proveedor').value,
-        fechaIngreso: document.getElementById('fechaIngreso').value || hoy(),
-        estadoDepurado: estado,
+        fecha_ingreso: document.getElementById('fechaIngreso').value || hoy(),
+        estado: estado,
         observaciones: document.getElementById('observaciones').value,
-        imagenes: [...imagenesTemp],
-        mantenimientos: mantenimientos
+        imagenes: [...imagenesTemp]
     };
 
-    const index = troqueles.findIndex(t => t.id === id);
-    if (index !== -1) {
-        nuevoTroquel.fechaDepuracion = troqueles[index].fechaDepuracion;
-        nuevoTroquel.razonDepuracion = troqueles[index].razonDepuracion;
-        troqueles[index] = nuevoTroquel;
-        mostrarToast('Troquel actualizado correctamente.', 'success');
-    } else {
-        troqueles.unshift(nuevoTroquel);
-        mostrarToast('Troquel registrado correctamente.', 'success');
-    }
-
-    guardarDatos();
-    cerrarModalFormulario();
+    fetch(`${API_URL}/troqueles`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(nuevoTroquel)
+    })
+    .then(res => res.json())
+    .then(() => {
+        mostrarToast(editId ? 'Troquel actualizado correctamente.' : 'Troquel registrado correctamente.', 'success');
+        guardarDatos();
+        cerrarModalFormulario();
+    })
+    .catch(err => {
+        console.error('Error al guardar troquel:', err);
+        mostrarToast('Error al conectar con el servidor.', 'error');
+    });
 }
 
 function editarTroquel(id) {
@@ -691,14 +718,14 @@ function editarTroquel(id) {
     document.getElementById('troquelId').value = troquel.id;
     document.getElementById('nombre').value = troquel.nombre;
     document.getElementById('referencia').value = troquel.referencia;
-    document.getElementById('cliente').value = troquel.cliente || '';
-    document.getElementById('ubicacion').value = troquel.ubicacion || '';
+    document.getElementById('cliente_id').value = troquel.cliente_id || '';
+    document.getElementById('ubicacion_id').value = troquel.ubicacion_id || '';
     document.getElementById('cantidad').value = troquel.cantidad;
     document.getElementById('cavidades').value = troquel.cavidades;
     document.getElementById('costo').value = troquel.costo;
-    document.getElementById('proveedor').value = troquel.proveedor || '';
-    document.getElementById('fechaIngreso').value = troquel.fechaIngreso || '';
-    document.getElementById('estadoDepurado').value = troquel.estadoDepurado || 'Activo';
+    document.getElementById('proveedor_id').value = troquel.proveedor_id || '';
+    document.getElementById('fechaIngreso').value = troquel.fecha_ingreso || '';
+    document.getElementById('estadoDepurado').value = troquel.estado || 'Activo';
     document.getElementById('observaciones').value = troquel.observaciones || '';
 
     // Mantenimientos
@@ -787,13 +814,13 @@ function verDetalle(id) {
 
     document.getElementById('detNombre').textContent = troquel.nombre;
     document.getElementById('detRef').textContent = troquel.referencia;
-    document.getElementById('detCliente').textContent = troquel.cliente || 'N/A';
-    document.getElementById('detUbicacion').textContent = troquel.ubicacion || 'N/A';
+    document.getElementById('detCliente').textContent = troquel.cliente_nombre || 'N/A';
+    document.getElementById('detUbicacion').textContent = troquel.ubicacion_nombre || 'N/A';
     document.getElementById('detCantidad').textContent = troquel.cantidad;
     document.getElementById('detCavidades').textContent = troquel.cavidades;
     document.getElementById('detCosto').textContent = troquel.costo ? '$' + troquel.costo.toLocaleString() : 'N/A';
-    document.getElementById('detProveedor').textContent = troquel.proveedor || 'N/A';
-    document.getElementById('detFechaIngreso').textContent = troquel.fechaIngreso || 'N/A';
+    document.getElementById('detProveedor').textContent = troquel.proveedor_nombre || 'N/A';
+    document.getElementById('detFechaIngreso').textContent = troquel.fecha_ingreso || 'N/A';
 
     const estadoEl = document.getElementById('detEstado');
     estadoEl.textContent = troquel.estadoDepurado || 'Activo';
@@ -896,13 +923,13 @@ function exportarExcel() {
         const datosExcel = datosExportar.map(t => ({
             Nombre: t.nombre,
             Referencia: t.referencia,
-            Cliente: t.cliente || '-',
-            Ubicación: t.ubicacion || '-',
+            Cliente: t.cliente_nombre || '-',
+            Ubicación: t.ubicacion_nombre || '-',
             Cantidad: t.cantidad,
             'Costo Unit. ($)': t.costo || 0,
             'Valor Total ($)': (t.cantidad || 0) * (t.costo || 0),
             Cavidades: t.cavidades || 1,
-            Proveedor: t.proveedor || '-',
+            Proveedor: t.proveedor_nombre || '-',
             'Fecha Ingreso': t.fechaIngreso,
             Estado: t.estadoDepurado || 'Activo',
             'N° Mantenimientos': (t.mantenimientos || []).length
@@ -1221,12 +1248,12 @@ function exportarListaPDF() {
         const filas = datosParaPDF.map(t => [
             t.nombre        || '-',
             t.referencia    || '-',
-            t.cliente       || '-',
-            t.ubicacion     || '-',
+            t.cliente_nombre || '-',
+            t.ubicacion_nombre || '-',
             String(t.cantidad || 0),
             formatCurrency(t.costo || 0),
             formatCurrency((Number(t.cantidad)||0) * (Number(t.costo)||0)),
-            t.estadoDepurado || 'Activo'
+            t.estado || 'Activo'
         ]);
 
         doc.autoTable({
@@ -1287,6 +1314,102 @@ function exportarListaPDF() {
         console.error('Error PDF lista:', error);
         mostrarToast('Error al generar PDF.', 'error');
     }
+}
+
+// === GESTIÓN DE CATÁLOGOS (UI) ===
+function abrirModalCatalogos() {
+    document.getElementById('modalCatalogos').classList.add('active');
+    verCatalogo('clientes');
+}
+
+function cerrarModalCatalogos() {
+    document.getElementById('modalCatalogos').classList.remove('active');
+}
+
+function verCatalogo(tipo) {
+    catalogoActual = tipo;
+    
+    // Actualizar tabs
+    document.querySelectorAll('.cat-tab').forEach(btn => {
+        btn.classList.toggle('active', btn.textContent.toLowerCase() === tipo);
+    });
+    
+    // Actualizar título de formulario
+    const titulos = { clientes: 'Cliente', ubicaciones: 'Ubicación', proveedores: 'Proveedor', responsables: 'Responsable' };
+    document.getElementById('catFormTitle').textContent = `Agregar Nuevo ${titulos[tipo]}`;
+    
+    // Renderizar inputs según el catálogo
+    const container = document.getElementById('catInputs');
+    container.innerHTML = `
+        <div class="form-group">
+            <label>Nombre del ${titulos[tipo]} *</label>
+            <input type="text" id="catNombre" required>
+        </div>
+    `;
+    
+    if (tipo === 'clientes' || tipo === 'proveedores') {
+        container.innerHTML += `
+            <div class="form-group mt-2">
+                <label>${tipo === 'clientes' ? 'Contacto' : 'NIT'}</label>
+                <input type="text" id="catExtra">
+            </div>
+        `;
+    }
+    
+    renderListaCatalogo();
+}
+
+function renderListaCatalogo() {
+    const lista = document.getElementById('listaCatalogo');
+    lista.innerHTML = '';
+    const datos = catalogos[catalogoActual];
+    
+    datos.forEach(item => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+            <td>${escapeHTML(item.nombre)}</td>
+            <td>
+                <button class="btn-icon delete" onclick="eliminarRegistroCatalogo(${item.id})" title="Eliminar"><i class="fa-solid fa-trash-can"></i></button>
+            </td>
+        `;
+        lista.appendChild(tr);
+    });
+}
+
+async function guardarRegistroCatalogo(e) {
+    e.preventDefault();
+    const nombre = document.getElementById('catNombre').value.trim();
+    const extra = document.getElementById('catExtra')?.value || '';
+    
+    if (!nombre) return;
+    
+    const body = { nombre };
+    if (catalogoActual === 'clientes') body.contacto = extra;
+    if (catalogoActual === 'proveedores') body.nit = extra;
+    
+    try {
+        const response = await fetch(`${API_URL}/${catalogoActual}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+        
+        if (response.ok) {
+            mostrarToast('Registro guardado.', 'success');
+            await cargarCatalogos();
+            verCatalogo(catalogoActual);
+            document.getElementById('formCatalogo').reset();
+        }
+    } catch (err) {
+        mostrarToast('Error al guardar.', 'error');
+    }
+}
+
+async function eliminarRegistroCatalogo(id) {
+    if (!confirm('¿Desea eliminar este registro? Los troqueles asociados quedarán sin esta referencia.')) return;
+    
+    // Nota: El backend debería soportar DELETE, aquí lo simplificamos
+    mostrarToast('Función de eliminación de catálogo en desarrollo.', 'info');
 }
 
 // === TEMA ===

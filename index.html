@@ -34,6 +34,7 @@
             <button class="btn btn-danger" onclick="exportarListaPDF()" aria-label="Exportar a PDF"><i class="fa-solid fa-file-pdf"></i> PDF</button>
             <button class="btn btn-outline" onclick="imprimirPantalla()" aria-label="Imprimir lista"><i class="fa-solid fa-print"></i> Imprimir</button>
             
+            <button class="btn btn-outline" onclick="abrirModalCatalogos()" aria-label="Gestionar Catálogos"><i class="fa-solid fa-list-check"></i> Catálogos</button>
             <button class="btn btn-primary" onclick="abrirModalNuevo()" aria-label="Registrar nuevo troquel"><i class="fa-solid fa-plus"></i> Nuevo Troquel</button>
         </div>
     </header>
@@ -128,12 +129,16 @@
                             <span class="field-error" id="errorReferencia">La referencia es obligatoria y debe ser única.</span>
                         </div>
                         <div class="form-group">
-                            <label for="cliente">Cliente</label>
-                            <input type="text" id="cliente">
+                            <label for="cliente_id">Cliente</label>
+                            <select id="cliente_id">
+                                <option value="">-- Seleccionar Cliente --</option>
+                            </select>
                         </div>
                         <div class="form-group">
-                            <label for="ubicacion">Ubicación (Estante/Fila)</label>
-                            <input type="text" id="ubicacion">
+                            <label for="ubicacion_id">Ubicación</label>
+                            <select id="ubicacion_id">
+                                <option value="">-- Seleccionar Ubicación --</option>
+                            </select>
                         </div>
                         <div class="form-group" id="grupoCantidad">
                             <label for="cantidad">Cantidad (Stock)</label>
@@ -149,8 +154,10 @@
                             <input type="number" step="0.01" id="costo">
                         </div>
                         <div class="form-group">
-                            <label for="proveedor">Proveedor/Fabricante</label>
-                            <input type="text" id="proveedor">
+                            <label for="proveedor_id">Proveedor</label>
+                            <select id="proveedor_id">
+                                <option value="">-- Seleccionar Proveedor --</option>
+                            </select>
                         </div>
                         <div class="form-group">
                             <label for="fechaIngreso">Fecha de Ingreso</label>
@@ -297,6 +304,50 @@
     <div class="lightbox" id="lightbox" role="dialog" aria-label="Visor de imágenes">
         <button class="lightbox-close" onclick="cerrarLightbox()" aria-label="Cerrar visor"><i class="fa-solid fa-times"></i></button>
         <img id="lightboxImg" src="">
+    </div>
+
+    <!-- MODAL GESTIÓN DE CATÁLOGOS -->
+    <div id="modalCatalogos" class="modal" role="dialog" aria-labelledby="catTitle">
+        <div class="modal-content" style="max-width: 900px;">
+            <div class="modal-header">
+                <h2 id="catTitle"><i class="fa-solid fa-list-check"></i> Gestión de Catálogos</h2>
+                <button class="close-btn" onclick="cerrarModalCatalogos()" aria-label="Cerrar catálogos"><i class="fa-solid fa-times"></i></button>
+            </div>
+            <div class="modal-body">
+                <div class="catalog-tabs">
+                    <button class="cat-tab active" onclick="verCatalogo('clientes')">Clientes</button>
+                    <button class="cat-tab" onclick="verCatalogo('ubicaciones')">Ubicaciones</button>
+                    <button class="cat-tab" onclick="verCatalogo('proveedores')">Proveedores</button>
+                    <button class="cat-tab" onclick="verCatalogo('responsables')">Responsables</button>
+                </div>
+                
+                <div class="catalog-content">
+                    <div class="catalog-form-box">
+                        <h4 id="catFormTitle">Agregar Nuevo Cliente</h4>
+                        <form id="formCatalogo" onsubmit="guardarRegistroCatalogo(event)">
+                            <div id="catInputs">
+                                <!-- Inputs dinámicos según el catálogo -->
+                            </div>
+                            <button type="submit" class="btn btn-primary btn-sm mt-2">Guardar Registro</button>
+                        </form>
+                    </div>
+                    
+                    <div class="catalog-list-box">
+                        <table class="mini-table">
+                            <thead>
+                                <tr>
+                                    <th>Nombre</th>
+                                    <th>Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="listaCatalogo">
+                                <!-- Filas dinámicas -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <script src="app.js"></script>

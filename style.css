@@ -787,7 +787,7 @@ td:last-child { border-radius: 0 16px 16px 0; }
 @media print {
     @page { size: portrait; margin: 1.5cm; }
     body { background: white !important; color: black !important; font-size: 10pt; }
-    .no-print, .top-nav, .stats-bar, .tabs-container, .btn, .btn-icon, .storage-warning, .modal, .lightbox, .pagination, .search-box, #toastContainer { display: none !important; }
+    .no-print, .top-nav, .stats-bar, .tabs-container, .btn, .btn-icon, .storage-warning, .lightbox, .pagination, .search-box, #toastContainer { display: none !important; }
     
     .container { margin: 0; padding: 0; width: 100%; max-width: none; }
     .table-container { box-shadow: none; border: none; padding: 0; overflow: visible !important; }

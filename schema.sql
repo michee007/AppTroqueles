@@ -6,6 +6,14 @@
 
 -- 1. TABLAS MAESTRO (Catálogos)
 -- Estas tablas evitan errores de escritura al estandarizar opciones.
+DROP TABLE IF EXISTS imagenes_troquel CASCADE;
+DROP TABLE IF EXISTS mantenimientos CASCADE;
+DROP TABLE IF EXISTS troqueles CASCADE;
+DROP TABLE IF EXISTS responsables CASCADE;
+DROP TABLE IF EXISTS proveedores CASCADE;
+DROP TABLE IF EXISTS ubicaciones CASCADE;
+DROP TABLE IF EXISTS clientes CASCADE;
+
 
 CREATE TABLE IF NOT EXISTS clientes (
     id SERIAL PRIMARY KEY,
@@ -45,18 +53,23 @@ CREATE TABLE IF NOT EXISTS troqueles (
     
     -- Relaciones Normalizadas
     cliente_id INTEGER REFERENCES clientes(id) ON DELETE SET NULL,
-    ubicacion_id INTEGER REFERENCES ubicaciones(id) ON DELETE SET NULL,
     proveedor_id INTEGER REFERENCES proveedores(id) ON DELETE SET NULL,
+    ubicacion VARCHAR(255),
     
     cantidad INTEGER DEFAULT 0,
     cavidades INTEGER DEFAULT 0,
     costo DECIMAL(15, 2) DEFAULT 0.00,
+    ancho DECIMAL(10, 2) DEFAULT 0.00,
+    profundo DECIMAL(10, 2) DEFAULT 0.00,
+    alto DECIMAL(10, 2) DEFAULT 0.00,
     fecha_ingreso DATE DEFAULT CURRENT_DATE,
     estado VARCHAR(50) DEFAULT 'Activo', -- 'Activo', 'En Mantenimiento', 'Depurado'
     
     observaciones TEXT,
     fecha_depuracion DATE,
     razon_depuracion TEXT,
+    fecha_restauracion DATE,
+    razon_restauracion TEXT,
     
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
@@ -89,7 +102,6 @@ CREATE TABLE IF NOT EXISTS imagenes_troquel (
 -- ÍNDICES PARA OPTIMIZACIÓN
 -- ========================================================
 CREATE INDEX IF NOT EXISTS idx_troqueles_cliente ON troqueles(cliente_id);
-CREATE INDEX IF NOT EXISTS idx_troqueles_ubicacion ON troqueles(ubicacion_id);
 CREATE INDEX IF NOT EXISTS idx_troqueles_proveedor ON troqueles(proveedor_id);
 CREATE INDEX IF NOT EXISTS idx_mantenimientos_responsable ON mantenimientos(responsable_id);
 

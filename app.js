@@ -1,6 +1,6 @@
-const API_URL = 'http://localhost:3000/api';
+const API_URL = 'http://192.168.2.245:3000/api';
 let troqueles = []; // Ahora se carga desde la DB
-let catalogos = { clientes: [], ubicaciones: [], proveedores: [], responsables: [] };
+let catalogos = { clientes: [], proveedores: [], responsables: [] };
 let imagenesTemp = [];
 let pestanaActual = 'activos';
 let filtroDashboard = 'todos';
@@ -53,6 +53,29 @@ function hoy() {
     return new Date().toISOString().split('T')[0];
 }
 
+/**
+ * Formatea una fecha ISO o string (ej: "2026-05-14T05:00:00.000Z" o "2026-05-14") a formato DD-MM-YYYY.
+ */
+function formatearFecha(fechaStr) {
+    if (!fechaStr) return '';
+    try {
+        const datePart = fechaStr.includes('T') ? fechaStr.split('T')[0] : fechaStr;
+        const partes = datePart.split('-');
+        if (partes.length === 3) {
+            if (partes[0].length === 4) {
+                const [anio, mes, dia] = partes;
+                return `${dia}-${mes}-${anio}`;
+            }
+            if (partes[2].length === 4) {
+                return datePart;
+            }
+        }
+    } catch (e) {
+        console.error('Error al formatear fecha:', e);
+    }
+    return fechaStr;
+}
+
 function getLongDate() {
     const options = { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' };
     return new Date().toLocaleDateString('es-ES', options);
@@ -63,7 +86,7 @@ function getLongDate() {
  */
 function mostrarToast(mensaje, tipo) {
     const container = document.getElementById('toastContainer');
-    const iconos = { success:'fa-circle-check', error:'fa-circle-xmark', warning:'fa-circle-exclamation', info:'fa-circle-info' };
+    const iconos = { success: 'fa-circle-check', error: 'fa-circle-xmark', warning: 'fa-circle-exclamation', info: 'fa-circle-info' };
     const toast = document.createElement('div');
     toast.className = 'toast toast-' + (tipo || 'info');
     toast.innerHTML = `<i class="fa-solid ${iconos[tipo] || iconos.info}"></i><span>${escapeHTML(mensaje)}</span>`;
@@ -96,14 +119,14 @@ document.addEventListener('DOMContentLoaded', async () => {
     await cargarDatos();
     actualizarVista();
     initDragAndDrop();
-    
+
     const debouncedSearch = debounce(() => {
         paginaActual = 1;
         actualizarVista();
     }, 300);
 
     searchInput.addEventListener('input', debouncedSearch);
-    
+
     document.getElementById('imagenesInput').addEventListener('change', (e) => procesarArchivos(e.target.files));
 
     // Headers de tabla para sorting
@@ -122,7 +145,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             cerrarModalDepuracion();
             cerrarLightbox();
         }
-        
+
         if (e.ctrlKey || e.metaKey) {
             if (e.key === 'n' || e.key === 'N') {
                 e.preventDefault();
@@ -149,14 +172,13 @@ async function cargarDatos() {
 
 async function cargarCatalogos() {
     try {
-        const [c, u, p, r] = await Promise.all([
+        const [c, p, r] = await Promise.all([
             fetch(`${API_URL}/clientes`).then(res => res.json()),
-            fetch(`${API_URL}/ubicaciones`).then(res => res.json()),
             fetch(`${API_URL}/proveedores`).then(res => res.json()),
             fetch(`${API_URL}/responsables`).then(res => res.json())
         ]);
-        
-        catalogos = { clientes: c, ubicaciones: u, proveedores: p, responsables: r };
+
+        catalogos = { clientes: c, proveedores: p, responsables: r };
         actualizarSelects();
     } catch (err) {
         console.error('Error al cargar catálogos:', err);
@@ -165,7 +187,6 @@ async function cargarCatalogos() {
 
 function actualizarSelects() {
     llenarSelect('cliente_id', catalogos.clientes);
-    llenarSelect('ubicacion_id', catalogos.ubicaciones);
     llenarSelect('proveedor_id', catalogos.proveedores);
 }
 
@@ -209,15 +230,15 @@ function filtrarPorDashboard(tipo) {
 function cambiarPestana(pestana) {
     pestanaActual = pestana;
     paginaActual = 1;
-    
+
     const tabActivos = document.getElementById('tabActivos');
     const tabDepurados = document.getElementById('tabDepurados');
-    
+
     tabActivos.classList.toggle('active', pestana === 'activos');
     tabDepurados.classList.toggle('active', pestana === 'depurados');
     tabActivos.setAttribute('aria-selected', pestana === 'activos');
     tabDepurados.setAttribute('aria-selected', pestana === 'depurados');
-    
+
     const tableContainer = document.getElementById('tableContainer');
     if (tableContainer) {
         tableContainer.setAttribute('aria-labelledby', pestana === 'activos' ? 'tabActivos' : 'tabDepurados');
@@ -245,7 +266,7 @@ function ordenarDatos(datos) {
     return datos.sort((a, b) => {
         let valA = a[sortCol] || '';
         let valB = b[sortCol] || '';
-        
+
         // Manejo especial para columna Valor Total
         if (sortCol === 'total') {
             valA = (a.cantidad || 0) * (a.costo || 0);
@@ -254,7 +275,7 @@ function ordenarDatos(datos) {
 
         if (typeof valA === 'string') valA = valA.toLowerCase();
         if (typeof valB === 'string') valB = valB.toLowerCase();
-        
+
         // Manejar números
         if (!isNaN(valA) && !isNaN(valB) && valA !== '' && valB !== '') {
             valA = Number(valA);
@@ -270,35 +291,44 @@ function ordenarDatos(datos) {
 // === DATOS Y FILTRADO ===
 function obtenerDatosFiltrados() {
     const query = searchInput.value.toLowerCase();
-    
+
     // Filtro base por pestaña (Activos vs Depurados)
     let filtrados = troqueles.filter(t => {
-        const esDepurado = (t.estadoDepurado === 'Depurado');
+        const esDepurado = (t.estado === 'Depurado');
         return pestanaActual === 'activos' ? !esDepurado : esDepurado;
     });
-    
+
     // Filtro adicional por dashboard (Mantenimiento)
     if (pestanaActual === 'activos' && filtroDashboard === 'mantenimiento') {
-        filtrados = filtrados.filter(t => t.estadoDepurado === 'En Mantenimiento');
+        filtrados = filtrados.filter(t => t.estado === 'En Mantenimiento');
     }
-    
+
     // Filtro por búsqueda
     if (query.trim() !== '') {
+        // Intentar parsear a número para búsqueda exacta en medidas
+        const queryNum = parseFloat(query);
+        const isQueryNum = !isNaN(queryNum);
+
         filtrados = filtrados.filter(t =>
             t.nombre.toLowerCase().includes(query) ||
             (t.cliente_nombre && t.cliente_nombre.toLowerCase().includes(query)) ||
             t.referencia.toLowerCase().includes(query) ||
-            (t.proveedor_nombre && t.proveedor_nombre.toLowerCase().includes(query))
+            (t.proveedor_nombre && t.proveedor_nombre.toLowerCase().includes(query)) ||
+            (isQueryNum && (
+                Number(t.ancho) === queryNum ||
+                Number(t.profundo) === queryNum ||
+                Number(t.alto) === queryNum
+            ))
         );
     }
-    
+
     return ordenarDatos(filtrados);
 }
 
 function actualizarVista() {
-    const noDepurados = troqueles.filter(t => t.estadoDepurado !== 'Depurado');
-    const mantenimiento = troqueles.filter(t => t.estadoDepurado === 'En Mantenimiento');
-    const depurados = troqueles.filter(t => t.estadoDepurado === 'Depurado');
+    const noDepurados = troqueles.filter(t => t.estado !== 'Depurado');
+    const mantenimiento = troqueles.filter(t => t.estado === 'En Mantenimiento');
+    const depurados = troqueles.filter(t => t.estado === 'Depurado');
 
     statActivos.textContent = noDepurados.length;
     if (statMantenimiento) statMantenimiento.textContent = mantenimiento.length;
@@ -324,7 +354,7 @@ function actualizarHeadersSorting() {
         th.classList.remove('sort-active');
         const icon = th.querySelector('.sort-icon');
         if (icon) icon.className = 'fa-solid fa-sort sort-icon';
-        
+
         if (th.getAttribute('data-sort') === sortCol) {
             th.classList.add('sort-active');
             if (icon) icon.className = `fa-solid fa-sort-${sortDir === 'asc' ? 'up' : 'down'} sort-icon`;
@@ -332,13 +362,10 @@ function actualizarHeadersSorting() {
     });
 }
 
-function guardarDatos() {
-    try {
-        localStorage.setItem('troquelesApp_data', JSON.stringify(troqueles));
-        actualizarIndicadorAlmacenamiento();
-    } catch (e) {
-        mostrarToast('Error: Almacenamiento lleno. Reduzca el número de imágenes.', 'error');
-    }
+async function guardarDatos() {
+    // En la versión PostgreSQL, esta función recarga los datos desde el servidor
+    // para asegurar que la vista esté sincronizada con la base de datos.
+    await cargarDatos();
     actualizarVista();
 }
 
@@ -376,17 +403,17 @@ function renderTabla(datos, ignorarPaginacion = false, mostrarTotal = false) {
     itemsPagina.forEach((troquel, index) => {
         const tr = document.createElement('tr');
         tr.style.animationDelay = `${index * 0.05}s`;
-        
-        const portada = (troquel.imagenes && troquel.imagenes.length > 0) 
-            ? troquel.imagenes[0] 
+
+        const portada = (troquel.imagenes && troquel.imagenes.length > 0)
+            ? troquel.imagenes[0]
             : 'https://via.placeholder.com/50?text=No+Img';
 
         let claseEstado = 'status-activo';
-        if (troquel.estadoDepurado === 'En Mantenimiento') claseEstado = 'status-mantenimiento';
-        if (troquel.estadoDepurado === 'Depurado') claseEstado = 'status-depurado';
+        if (troquel.estado === 'En Mantenimiento') claseEstado = 'status-mantenimiento';
+        if (troquel.estado === 'Depurado') claseEstado = 'status-depurado';
 
-        const valorAMostrar = mostrarTotal 
-            ? (Number(troquel.cantidad) || 0) * (Number(troquel.costo) || 0) 
+        const valorAMostrar = mostrarTotal
+            ? (Number(troquel.cantidad) || 0) * (Number(troquel.costo) || 0)
             : (Number(troquel.costo) || 0);
 
         let botonesAccion = '';
@@ -409,7 +436,7 @@ function renderTabla(datos, ignorarPaginacion = false, mostrarTotal = false) {
             <td><strong>${escapeHTML(troquel.nombre)}</strong></td>
             <td><code>${escapeHTML(troquel.referencia)}</code></td>
             <td>${escapeHTML(troquel.cliente_nombre) || '<span class="text-light">N/A</span>'}</td>
-            <td>${escapeHTML(troquel.ubicacion_nombre) || '<span class="text-light">-</span>'}</td>
+            <td>${escapeHTML(troquel.ubicacion) || '<span class="text-light">-</span>'}</td>
             <td>${troquel.cantidad}</td>
             <td>${formatCurrency(valorAMostrar)}</td>
             <td><span class="badge-status ${claseEstado}">${escapeHTML(troquel.estado) || 'Activo'}</span></td>
@@ -423,15 +450,15 @@ function renderPaginacion(totalItems) {
     const container = document.getElementById('paginationContainer');
     if (!container) return;
     container.innerHTML = '';
-    
+
     if (totalPaginas <= 1) return;
-    
+
     const btnPrev = document.createElement('button');
     btnPrev.innerHTML = '<i class="fa-solid fa-chevron-left"></i>';
     btnPrev.disabled = paginaActual === 1;
     btnPrev.onclick = () => { paginaActual--; actualizarVista(); };
     container.appendChild(btnPrev);
-    
+
     for (let i = 1; i <= totalPaginas; i++) {
         const btn = document.createElement('button');
         btn.textContent = i;
@@ -439,7 +466,7 @@ function renderPaginacion(totalItems) {
         btn.onclick = () => { paginaActual = i; actualizarVista(); };
         container.appendChild(btn);
     }
-    
+
     const btnNext = document.createElement('button');
     btnNext.innerHTML = '<i class="fa-solid fa-chevron-right"></i>';
     btnNext.disabled = paginaActual === totalPaginas;
@@ -467,22 +494,22 @@ function cerrarModalFormulario() {
 function initDragAndDrop() {
     const dropZone = document.getElementById('dropZone');
     if (!dropZone) return;
-    
+
     ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
         dropZone.addEventListener(eventName, e => {
             e.preventDefault();
             e.stopPropagation();
         }, false);
     });
-    
+
     ['dragenter', 'dragover'].forEach(eventName => {
         dropZone.addEventListener(eventName, () => dropZone.classList.add('drag-over'), false);
     });
-    
+
     ['dragleave', 'drop'].forEach(eventName => {
         dropZone.addEventListener(eventName, () => dropZone.classList.remove('drag-over'), false);
     });
-    
+
     dropZone.addEventListener('drop', e => {
         const files = e.dataTransfer.files;
         if (files.length > 0) {
@@ -503,9 +530,9 @@ function procesarArchivos(files) {
 
 function comprimirImagen(file, callback) {
     const reader = new FileReader();
-    reader.onload = function(event) {
+    reader.onload = function (event) {
         const img = new Image();
-        img.onload = function() {
+        img.onload = function () {
             const canvas = document.createElement('canvas');
             const MAX = 800;
             let w = img.width, h = img.height;
@@ -549,11 +576,17 @@ function limpiarFotosTemp() {
 function agregarEntradaMantenimiento(datos = null) {
     const container = document.getElementById('mantenimientoListaForm');
     const id = 'maint-' + Date.now() + Math.random().toString(16).slice(2);
-    
+
     const div = document.createElement('div');
     div.className = 'maintenance-entry';
     div.id = id;
-    
+
+    let respOptions = `<option value="">-- Seleccionar --</option>`;
+    catalogos.responsables.forEach(r => {
+        const selected = (datos?.responsable_id == r.id) ? 'selected' : '';
+        respOptions += `<option value="${r.id}" ${selected}>${r.nombre}</option>`;
+    });
+
     div.innerHTML = `
         <button type="button" class="maint-remove-btn" onclick="eliminarEntradaMantenimiento('${id}')" title="Eliminar registro">
             <i class="fa-solid fa-trash-can"></i>
@@ -567,11 +600,13 @@ function agregarEntradaMantenimiento(datos = null) {
             <div class="maint-inputs-grid">
                 <div class="form-group">
                     <label>Fecha</label>
-                    <input type="date" class="maint-fecha" value="${datos?.fecha || hoy()}">
+                    <input type="date" class="maint-fecha" value="${datos?.fecha ? new Date(datos.fecha).toISOString().split('T')[0] : hoy()}">
                 </div>
                 <div class="form-group">
                     <label>Responsable</label>
-                    <input type="text" class="maint-responsable" placeholder="Nombre" value="${datos?.responsable || ''}">
+                    <select class="maint-responsable_id">
+                        ${respOptions}
+                    </select>
                 </div>
                 <div class="form-group">
                     <label>Costo ($)</label>
@@ -616,12 +651,12 @@ function obtenerMantenimientoForm() {
         const fecha = el.querySelector('.maint-fecha').value;
         const trabajo = el.querySelector('.maint-trabajo').value;
         const costo = parseFloat(el.querySelector('.maint-costo').value) || 0;
-        const responsable = el.querySelector('.maint-responsable').value;
+        const responsable_id = el.querySelector('.maint-responsable_id')?.value || null;
         const img = el.querySelector('.maint-photo-box img');
         const foto = img.classList.contains('hidden') ? null : img.src;
-        
-        if (fecha || trabajo || costo || responsable || foto) {
-            entries.push({ fecha, trabajo, costo, responsable, foto });
+
+        if (fecha || trabajo || costo || responsable_id || foto) {
+            entries.push({ fecha, trabajo, costo, responsable_id: parseInt(responsable_id) || null, foto });
         }
     });
     return entries;
@@ -655,7 +690,7 @@ function guardarTroquel(e) {
         }
     }
     if (cantidad < 0) { document.getElementById('grupoCantidad').classList.add('has-error'); errores = true; }
-    
+
     if (costoVal < 0) {
         costoInput.closest('.form-group').classList.add('has-error');
         mostrarToast('El costo no puede ser negativo.', 'error');
@@ -682,15 +717,19 @@ function guardarTroquel(e) {
         nombre: nombre,
         referencia: referencia,
         cliente_id: parseInt(document.getElementById('cliente_id').value) || null,
-        ubicacion_id: parseInt(document.getElementById('ubicacion_id').value) || null,
+        ubicacion: document.getElementById('ubicacion').value.trim() || null,
         proveedor_id: parseInt(document.getElementById('proveedor_id').value) || null,
         cantidad: cantidad,
         cavidades: parseInt(document.getElementById('cavidades').value) || 0,
+        ancho: parseFloat(document.getElementById('ancho').value) || 0,
+        profundo: parseFloat(document.getElementById('profundo').value) || 0,
+        alto: parseFloat(document.getElementById('alto').value) || 0,
         costo: costoVal,
         fecha_ingreso: document.getElementById('fechaIngreso').value || hoy(),
         estado: estado,
         observaciones: document.getElementById('observaciones').value,
-        imagenes: [...imagenesTemp]
+        imagenes: [...imagenesTemp],
+        mantenimientos: mantenimientos
     };
 
     fetch(`${API_URL}/troqueles`, {
@@ -698,16 +737,78 @@ function guardarTroquel(e) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(nuevoTroquel)
     })
-    .then(res => res.json())
-    .then(() => {
-        mostrarToast(editId ? 'Troquel actualizado correctamente.' : 'Troquel registrado correctamente.', 'success');
-        guardarDatos();
-        cerrarModalFormulario();
+        .then(res => res.json())
+        .then(() => {
+            mostrarToast(editId ? 'Troquel actualizado correctamente.' : 'Troquel registrado correctamente.', 'success');
+            guardarDatos();
+            cerrarModalFormulario();
+        })
+        .catch(err => {
+            console.error('Error al guardar troquel:', err);
+            mostrarToast('Error de conexión con el servidor.', 'error');
+        });
+}
+
+// --- Restoration Functions ---
+/**
+ * Open restoration modal for a depurated troquel.
+ */
+function iniciarRestauracion(id) {
+    console.log('Initiating restoration for troquel ID:', id);
+    const modal = document.getElementById('modalRestauracion');
+    if (!modal) {
+        console.error('Modal Restauracion not found in DOM');
+        return;
+    }
+    document.getElementById('restaurarTroquelId').value = id;
+    const razonEl = document.getElementById('restaurarRazon');
+    if (razonEl) {
+        razonEl.value = '';
+        razonEl.focus();
+    }
+    modal.classList.add('active');
+    console.log('Modal should now be active');
+}
+
+function cerrarModalRestauracion() {
+    const modal = document.getElementById('modalRestauracion');
+    if (modal) modal.classList.remove('active');
+    document.getElementById('modalRestauracion').classList.remove('active');
+}
+
+/**
+ * Confirm restoration, send request to backend.
+ */
+function confirmarRestauracion() {
+    const id = document.getElementById('restaurarTroquelId').value;
+    const razon = document.getElementById('restaurarRazon').value.trim();
+    // Reason is optional, so we send only if provided
+    const payload = razon ? { razon_restauracion: razon } : {};
+    fetch(`${API_URL}/troqueles/${id}/restaurar`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
     })
-    .catch(err => {
-        console.error('Error al guardar troquel:', err);
-        mostrarToast('Error al conectar con el servidor.', 'error');
-    });
+        .then(res => res.json())
+        .then(() => {
+            mostrarToast('Troquel restaurado.', 'success');
+            guardarDatos();
+            cerrarModalRestauracion();
+        })
+        .catch(err => {
+            console.error('Error al restaurar troquel:', err);
+            mostrarToast('Error al restaurar.', 'error');
+        });
+}
+
+/**
+ * Placeholder function tied to restore button in table.
+ * Opens the restoration modal.
+ */
+// Removed redundant async restoration function; modal flow handled by iniciarRestauracion and confirmarRestauracion.
+
+function restaurarTroquel(id) {
+    iniciarRestauracion(id);
 }
 
 function editarTroquel(id) {
@@ -719,12 +820,15 @@ function editarTroquel(id) {
     document.getElementById('nombre').value = troquel.nombre;
     document.getElementById('referencia').value = troquel.referencia;
     document.getElementById('cliente_id').value = troquel.cliente_id || '';
-    document.getElementById('ubicacion_id').value = troquel.ubicacion_id || '';
+    document.getElementById('ubicacion').value = troquel.ubicacion || '';
     document.getElementById('cantidad').value = troquel.cantidad;
     document.getElementById('cavidades').value = troquel.cavidades;
+    document.getElementById('ancho').value = troquel.ancho || 0;
+    document.getElementById('profundo').value = troquel.profundo || 0;
+    document.getElementById('alto').value = troquel.alto || 0;
     document.getElementById('costo').value = troquel.costo;
     document.getElementById('proveedor_id').value = troquel.proveedor_id || '';
-    document.getElementById('fechaIngreso').value = troquel.fecha_ingreso || '';
+    document.getElementById('fechaIngreso').value = troquel.fecha_ingreso ? troquel.fecha_ingreso.split('T')[0] : '';
     document.getElementById('estadoDepurado').value = troquel.estado || 'Activo';
     document.getElementById('observaciones').value = troquel.observaciones || '';
 
@@ -763,44 +867,53 @@ function confirmarDepuracion() {
     }
 
     const id = document.getElementById('depTroquelId').value;
-    const index = troqueles.findIndex(t => t.id === id);
-    if (index === -1) return;
+    const troquel = troqueles.find(t => t.id === id);
+    if (!troquel) return;
 
-    troqueles[index].estadoDepurado = 'Depurado';
-    troqueles[index].fechaDepuracion = document.getElementById('depFecha').value || hoy();
-    troqueles[index].razonDepuracion = razon;
+    const datosDepuracion = {
+        ...troquel,
+        estado: 'Depurado',
+        fecha_depuracion: document.getElementById('depFecha').value || hoy(),
+        razon_depuracion: razon
+    };
 
-    guardarDatos();
-    cerrarModalDepuracion();
-    mostrarToast('Troquel depurado correctamente.', 'warning');
+    fetch(`${API_URL}/troqueles`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(datosDepuracion)
+    })
+        .then(res => res.json())
+        .then(() => {
+            mostrarToast('Troquel depurado correctamente.', 'warning');
+            guardarDatos();
+            cerrarModalDepuracion();
+        })
+        .catch(err => {
+            console.error('Error al depurar:', err);
+            mostrarToast('Error al conectar con el servidor.', 'error');
+        });
 }
 
 // === RESTAURAR Y ELIMINAR ===
-function restaurarTroquel(id) {
-    console.log('Restaurando troquel:', id);
-    const index = troqueles.findIndex(t => t.id === id);
-    if (index === -1) {
-        console.error('Troquel no encontrado para restaurar');
-        return;
-    }
-    
-    troqueles[index].estadoDepurado = 'Activo';
-    // Limpiamos datos de depuración al restaurar
-    delete troqueles[index].fechaDepuracion;
-    delete troqueles[index].razonDepuracion;
-    
-    guardarDatos();
-    mostrarToast('Troquel restaurado al listado de Activos.', 'success');
+function ejecutarRestauracion(id) {
+    iniciarRestauracion(id);
 }
 
-function eliminarDefinitivamente(id) {
-    // Si confirm() falla o es bloqueado, usamos un confirm básico o simplemente procedemos si el usuario hizo click
-    // Para mayor seguridad en eliminación permanente, pedimos una confirmación simple
+async function eliminarDefinitivamente(id) {
     if (!confirm('¿Eliminar PERMANENTEMENTE? Esta acción no se puede deshacer.')) return;
-    
-    troqueles = troqueles.filter(t => t.id !== id);
-    guardarDatos();
-    mostrarToast('Troquel eliminado permanentemente.', 'error');
+
+    try {
+        const response = await fetch(`${API_URL}/troqueles/${id}`, {
+            method: 'DELETE'
+        });
+        if (response.ok) {
+            mostrarToast('Troquel eliminado permanentemente.', 'error');
+            guardarDatos();
+        }
+    } catch (err) {
+        console.error('Error al eliminar:', err);
+        mostrarToast('Error al conectar con el servidor.', 'error');
+    }
 }
 
 // === VER DETALLE ===
@@ -815,28 +928,43 @@ function verDetalle(id) {
     document.getElementById('detNombre').textContent = troquel.nombre;
     document.getElementById('detRef').textContent = troquel.referencia;
     document.getElementById('detCliente').textContent = troquel.cliente_nombre || 'N/A';
-    document.getElementById('detUbicacion').textContent = troquel.ubicacion_nombre || 'N/A';
+    document.getElementById('detUbicacion').textContent = troquel.ubicacion || 'N/A';
     document.getElementById('detCantidad').textContent = troquel.cantidad;
     document.getElementById('detCavidades').textContent = troquel.cavidades;
-    document.getElementById('detCosto').textContent = troquel.costo ? '$' + troquel.costo.toLocaleString() : 'N/A';
+    document.getElementById('detAncho').textContent = troquel.ancho || 0;
+    document.getElementById('detProfundo').textContent = troquel.profundo || 0;
+    document.getElementById('detAlto').textContent = troquel.alto || 0;
+    document.getElementById('detCosto').textContent = troquel.costo ? formatCurrency(Number(troquel.costo)) : 'N/A';
     document.getElementById('detProveedor').textContent = troquel.proveedor_nombre || 'N/A';
-    document.getElementById('detFechaIngreso').textContent = troquel.fecha_ingreso || 'N/A';
+    document.getElementById('detFechaIngreso').textContent = formatearFecha(troquel.fecha_ingreso) || 'N/A';
 
     const estadoEl = document.getElementById('detEstado');
-    estadoEl.textContent = troquel.estadoDepurado || 'Activo';
+    estadoEl.textContent = troquel.estado || 'Activo';
     estadoEl.className = 'value badge-status';
-    if (troquel.estadoDepurado === 'En Mantenimiento') estadoEl.classList.add('status-mantenimiento');
-    else if (troquel.estadoDepurado === 'Depurado') estadoEl.classList.add('status-depurado');
+    if (troquel.estado === 'En Mantenimiento') estadoEl.classList.add('status-mantenimiento');
+    else if (troquel.estado === 'Depurado') estadoEl.classList.add('status-depurado');
     else estadoEl.classList.add('status-activo');
 
     // Depuración
     const depSection = document.getElementById('detDepuracionSection');
-    if (troquel.estadoDepurado === 'Depurado' && troquel.fechaDepuracion) {
+    if (troquel.estado === 'Depurado' && troquel.fecha_depuracion) {
         depSection.style.display = 'block';
-        document.getElementById('detFechaDepuracion').textContent = troquel.fechaDepuracion;
-        document.getElementById('detRazonDepuracion').textContent = troquel.razonDepuracion || 'N/A';
+        document.getElementById('detFechaDepuracion').textContent = formatearFecha(troquel.fecha_depuracion) || 'N/A';
+        document.getElementById('detRazonDepuracion').textContent = troquel.razon_depuracion || 'N/A';
     } else {
         depSection.style.display = 'none';
+    }
+
+    // Restauración
+    const restSection = document.getElementById('detRestauracionSection');
+    if (restSection) {
+        if (troquel.estado !== 'Depurado' && (troquel.fecha_restauracion || troquel.razon_restauracion)) {
+            restSection.style.display = 'block';
+            document.getElementById('detFechaRestauracion').textContent = formatearFecha(troquel.fecha_restauracion) || 'N/A';
+            document.getElementById('detRazonRestauracion').textContent = troquel.razon_restauracion || 'Sin justificación';
+        } else {
+            restSection.style.display = 'none';
+        }
     }
 
     // Observaciones
@@ -858,9 +986,11 @@ function verDetalle(id) {
             const item = document.createElement('div');
             item.className = 'maint-timeline-item';
             item.innerHTML = `
-                <div class="maint-date">${m.fecha}</div>
-                <div class="maint-desc"><strong>Trabajo:</strong> ${escapeHTML(m.trabajo)}</div>
-                <div class="maint-meta"><strong>Responsable:</strong> ${escapeHTML(m.responsable)} | <strong>Costo:</strong> $${(m.costo || 0).toLocaleString()}</div>
+                <div class="maint-timeline-item">
+                    <div class="maint-date">${formatearFecha(m.fecha)}</div>
+                    <div class="maint-desc"><strong>Trabajo:</strong> ${escapeHTML(m.trabajo)}</div>
+                    <div class="maint-meta"><strong>Responsable:</strong> ${escapeHTML(m.responsable_nombre || 'N/A')} | <strong>Costo:</strong> ${formatCurrency(Number(m.costo) || 0)}</div>
+                </div>
             `;
             maintLista.appendChild(item);
         });
@@ -924,14 +1054,17 @@ function exportarExcel() {
             Nombre: t.nombre,
             Referencia: t.referencia,
             Cliente: t.cliente_nombre || '-',
-            Ubicación: t.ubicacion_nombre || '-',
+            Ubicación: t.ubicacion || '-',
             Cantidad: t.cantidad,
             'Costo Unit. ($)': t.costo || 0,
             'Valor Total ($)': (t.cantidad || 0) * (t.costo || 0),
             Cavidades: t.cavidades || 1,
+            'Ancho (mm)': t.ancho || 0,
+            'Profundo (mm)': t.profundo || 0,
+            'Alto (mm)': t.alto || 0,
             Proveedor: t.proveedor_nombre || '-',
-            'Fecha Ingreso': t.fechaIngreso,
-            Estado: t.estadoDepurado || 'Activo',
+            'Fecha Ingreso': formatearFecha(t.fecha_ingreso),
+            Estado: t.estado || 'Activo',
             'N° Mantenimientos': (t.mantenimientos || []).length
         }));
 
@@ -940,7 +1073,7 @@ function exportarExcel() {
         const sheetName = pestanaActual === 'activos' ? "Activos" : "Depurados";
         XLSX.utils.book_append_sheet(workbook, worksheet, sheetName);
         XLSX.writeFile(workbook, `Inventario_Troqueles_${sheetName}.xlsx`);
-        
+
         mostrarToast('Excel descargado correctamente.', 'success');
     } catch (error) {
         console.error('Excel Export Error:', error);
@@ -1002,12 +1135,14 @@ function exportarDetallePDF() {
 
         // ── TABLA DE DATOS ─────────────────────────────────────
         const filas = [
-            ['Nombre',         troquel.nombre || '-',              'Referencia',      troquel.referencia || '-'],
-            ['Cliente',        troquel.cliente || 'N/A',           'Ubicación',       troquel.ubicacion || 'N/A'],
-            ['Proveedor',      troquel.proveedor || 'N/A',         'Fecha Ingreso',   troquel.fechaIngreso || 'N/A'],
-            ['Cantidad',       String(troquel.cantidad || 0),      'Cavidades',       String(troquel.cavidades || 0)],
+            ['Nombre', troquel.nombre || '-', 'Referencia', troquel.referencia || '-'],
+            ['Cliente', troquel.cliente_nombre || 'N/A', 'Ubicación', troquel.ubicacion || 'N/A'],
+            ['Proveedor', troquel.proveedor_nombre || 'N/A', 'Fecha Ingreso', formatearFecha(troquel.fecha_ingreso) || 'N/A'],
+            ['Cantidad', String(troquel.cantidad || 0), 'Cavidades', String(troquel.cavidades || 0)],
+            ['Ancho (mm)', String(troquel.ancho || 0), 'Profundo (mm)', String(troquel.profundo || 0)],
+            ['Alto (mm)', String(troquel.alto || 0), '', ''],
             ['Costo Unitario', '$' + (troquel.costo || 0).toLocaleString(), 'Valor Total', '$' + valorTotal.toLocaleString()],
-            ['Estado',         troquel.estadoDepurado || 'Activo', '',                '']
+            ['Estado', troquel.estado || 'Activo', '', '']
         ];
 
         const colW = contentW / 4;
@@ -1051,6 +1186,52 @@ function exportarDetallePDF() {
             y += obsH + 6;
         }
 
+        // ── INFORMACIÓN DE DEPURACIÓN ──────────────────────────
+        if (troquel.estado === 'Depurado' && troquel.fecha_depuracion) {
+            const depFechaStr = `Fecha de Depuración: ${formatearFecha(troquel.fecha_depuracion) || 'N/A'}`;
+            const razonDep = troquel.razon_depuracion || 'N/A';
+            const razonLines = doc.splitTextToSize(`Razón: ${razonDep}`, contentW - 4);
+            const depH = 10 + razonLines.length * 5;
+
+            if (y + depH + 6 > pageH - 20) { doc.addPage(); y = 14; }
+
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(10);
+            doc.text('Información de Depuración', marginL, y);
+            y += 4;
+
+            doc.setLineWidth(0.3);
+            doc.rect(marginL, y, contentW, depH);
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(9);
+            doc.text(depFechaStr, marginL + 2, y + 5);
+            doc.text(razonLines, marginL + 2, y + 10);
+            y += depH + 6;
+        }
+
+        // ── INFORMACIÓN DE RESTAURACIÓN ────────────────────────
+        if (troquel.estado !== 'Depurado' && (troquel.fecha_restauracion || troquel.razon_restauracion)) {
+            const restFechaStr = `Fecha de Restauración: ${formatearFecha(troquel.fecha_restauracion) || 'N/A'}`;
+            const razonRest = troquel.razon_restauracion || 'Sin justificación';
+            const razonRestLines = doc.splitTextToSize(`Razón de Restauración: ${razonRest}`, contentW - 4);
+            const restH = 10 + razonRestLines.length * 5;
+
+            if (y + restH + 6 > pageH - 20) { doc.addPage(); y = 14; }
+
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(10);
+            doc.text('Información de Restauración', marginL, y);
+            y += 4;
+
+            doc.setLineWidth(0.3);
+            doc.rect(marginL, y, contentW, restH);
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(9);
+            doc.text(restFechaStr, marginL + 2, y + 5);
+            doc.text(razonRestLines, marginL + 2, y + 10);
+            y += restH + 6;
+        }
+
         // ── HISTORIAL DE MANTENIMIENTO ─────────────────────────
         if (troquel.mantenimientos && troquel.mantenimientos.length > 0) {
             doc.setFont('helvetica', 'bold');
@@ -1063,14 +1244,14 @@ function exportarDetallePDF() {
                 margin: { left: marginL, right: 14 },
                 head: [['Fecha', 'Costo', 'Trabajo Realizado', 'Responsable']],
                 body: troquel.mantenimientos.map(m => [
-                    m.fecha || '-',
+                    formatearFecha(m.fecha) || '-',
                     '$' + (m.costo || 0).toLocaleString(),
                     m.trabajo || m.descripcion || '-',
                     m.responsable || '-'
                 ]),
-                styles: { fontSize: 8, textColor: [0,0,0], lineColor: [0,0,0], lineWidth: 0.3 },
-                headStyles: { fillColor: [255,255,255], textColor: [0,0,0], fontStyle: 'bold', lineColor: [0,0,0], lineWidth: 0.3 },
-                alternateRowStyles: { fillColor: [255,255,255] },
+                styles: { fontSize: 8, textColor: [0, 0, 0], lineColor: [0, 0, 0], lineWidth: 0.3 },
+                headStyles: { fillColor: [255, 255, 255], textColor: [0, 0, 0], fontStyle: 'bold', lineColor: [0, 0, 0], lineWidth: 0.3 },
+                alternateRowStyles: { fillColor: [255, 255, 255] },
                 columnStyles: {
                     0: { cellWidth: 25 },
                     1: { cellWidth: 22 },
@@ -1116,7 +1297,7 @@ function exportarDetallePDF() {
                         doc.rect(marginL, y, fw, fh);
                         doc.addImage(imgData, fmt, marginL, y, fw, fh);
                         y += fh + 5;
-                    } catch(imgErr) {
+                    } catch (imgErr) {
                         console.warn('No se pudo incrustar imagen', idx, imgErr);
                     }
                 });
@@ -1169,12 +1350,12 @@ function exportarDetallePDF() {
 function imprimirPantalla() {
     const tituloHoja = pestanaActual === 'activos' ? "ACTIVOS" : "DEPURADOS";
     const datosCompletos = obtenerDatosFiltrados();
-    
+
     const paginaPrevia = paginaActual;
-    
+
     // Renderizar TODA la lista con VALOR TOTAL para impresión
     renderTabla(datosCompletos, true, true);
-    
+
     const printHeader = document.querySelector('.print-header');
     if (printHeader) {
         printHeader.style.display = 'block';
@@ -1192,10 +1373,10 @@ function imprimirPantalla() {
     }
 
     mostrarToast('Preparando listado con Valores Totales para imprimir...', 'info');
-    
+
     setTimeout(() => {
         window.print();
-        
+
         if (printHeader) printHeader.style.display = 'none';
         if (summaryDiv) summaryDiv.style.display = 'none';
         paginaActual = paginaPrevia;
@@ -1221,13 +1402,13 @@ function exportarListaPDF() {
 
         const { jsPDF } = window.jspdf;
         const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
-        const pageW  = doc.internal.pageSize.getWidth();
-        const pageH  = doc.internal.pageSize.getHeight();
+        const pageW = doc.internal.pageSize.getWidth();
+        const pageH = doc.internal.pageSize.getHeight();
         const marginL = 10;
         const marginR = pageW - 10;
         const tituloHoja = pestanaActual === 'activos' ? 'ACTIVOS' : 'DEPURADOS';
-        const fechaStr   = new Date().toLocaleDateString('es-CO') + '  ' + new Date().toLocaleTimeString('es-CO');
-        const sumatoria  = datosParaPDF.reduce((acc, t) => acc + ((Number(t.cantidad) || 0) * (Number(t.costo) || 0)), 0);
+        const fechaStr = new Date().toLocaleDateString('es-CO') + '  ' + new Date().toLocaleTimeString('es-CO');
+        const sumatoria = datosParaPDF.reduce((acc, t) => acc + ((Number(t.cantidad) || 0) * (Number(t.costo) || 0)), 0);
 
         // ── ENCABEZADO ──────────────────────────────────────────
         let y = 12;
@@ -1246,20 +1427,21 @@ function exportarListaPDF() {
 
         // ── TABLA ───────────────────────────────────────────────
         const filas = datosParaPDF.map(t => [
-            t.nombre        || '-',
-            t.referencia    || '-',
+            t.nombre || '-',
+            t.referencia || '-',
             t.cliente_nombre || '-',
-            t.ubicacion_nombre || '-',
+            t.ubicacion || '-',
+            formatearFecha(t.fecha_ingreso) || '-',
             String(t.cantidad || 0),
             formatCurrency(t.costo || 0),
-            formatCurrency((Number(t.cantidad)||0) * (Number(t.costo)||0)),
+            formatCurrency((Number(t.cantidad) || 0) * (Number(t.costo) || 0)),
             t.estado || 'Activo'
         ]);
 
         doc.autoTable({
             startY: y,
             margin: { left: marginL, right: 10 },
-            head: [['Nombre', 'Referencia', 'Cliente', 'Ubicación', 'Cant.', 'Costo', 'Total', 'Estado']],
+            head: [['Nombre', 'Referencia', 'Cliente', 'Ubicación', 'Fecha Ingr.', 'Cant.', 'Costo', 'Total', 'Estado']],
             body: filas,
             styles: {
                 fontSize: 8,
@@ -1269,11 +1451,11 @@ function exportarListaPDF() {
                 overflow: 'linebreak'
             },
             headStyles: {
-                fillColor:  [255, 255, 255],
-                textColor:  [0, 0, 0],
-                fontStyle:  'bold',
-                lineColor:  [0, 0, 0],
-                lineWidth:  0.3
+                fillColor: [255, 255, 255],
+                textColor: [0, 0, 0],
+                fontStyle: 'bold',
+                lineColor: [0, 0, 0],
+                lineWidth: 0.3
             },
             alternateRowStyles: { fillColor: [255, 255, 255] },
             columnStyles: {
@@ -1328,16 +1510,16 @@ function cerrarModalCatalogos() {
 
 function verCatalogo(tipo) {
     catalogoActual = tipo;
-    
+
     // Actualizar tabs
     document.querySelectorAll('.cat-tab').forEach(btn => {
         btn.classList.toggle('active', btn.textContent.toLowerCase() === tipo);
     });
-    
+
     // Actualizar título de formulario
-    const titulos = { clientes: 'Cliente', ubicaciones: 'Ubicación', proveedores: 'Proveedor', responsables: 'Responsable' };
+    const titulos = { clientes: 'Cliente', proveedores: 'Proveedor', responsables: 'Responsable' };
     document.getElementById('catFormTitle').textContent = `Agregar Nuevo ${titulos[tipo]}`;
-    
+
     // Renderizar inputs según el catálogo
     const container = document.getElementById('catInputs');
     container.innerHTML = `
@@ -1346,16 +1528,21 @@ function verCatalogo(tipo) {
             <input type="text" id="catNombre" required>
         </div>
     `;
-    
-    if (tipo === 'clientes' || tipo === 'proveedores') {
+
+    if (tipo === 'clientes' || tipo === 'proveedores' || tipo === 'responsables') {
+        let labelExtra = 'Información';
+        if (tipo === 'clientes') labelExtra = 'Contacto';
+        else if (tipo === 'proveedores') labelExtra = 'NIT';
+        else if (tipo === 'responsables') labelExtra = 'Cargo';
+
         container.innerHTML += `
             <div class="form-group mt-2">
-                <label>${tipo === 'clientes' ? 'Contacto' : 'NIT'}</label>
+                <label>${labelExtra}</label>
                 <input type="text" id="catExtra">
             </div>
         `;
     }
-    
+
     renderListaCatalogo();
 }
 
@@ -1363,11 +1550,20 @@ function renderListaCatalogo() {
     const lista = document.getElementById('listaCatalogo');
     lista.innerHTML = '';
     const datos = catalogos[catalogoActual];
-    
+
+    if (!datos) return;
+
     datos.forEach(item => {
         const tr = document.createElement('tr');
+
+        let detalle = '-';
+        if (catalogoActual === 'clientes') detalle = item.contacto || '-';
+        else if (catalogoActual === 'proveedores') detalle = item.nit || '-';
+        else if (catalogoActual === 'responsables') detalle = item.cargo || '-';
+
         tr.innerHTML = `
             <td>${escapeHTML(item.nombre)}</td>
+            <td>${escapeHTML(detalle)}</td>
             <td>
                 <button class="btn-icon delete" onclick="eliminarRegistroCatalogo(${item.id})" title="Eliminar"><i class="fa-solid fa-trash-can"></i></button>
             </td>
@@ -1380,20 +1576,21 @@ async function guardarRegistroCatalogo(e) {
     e.preventDefault();
     const nombre = document.getElementById('catNombre').value.trim();
     const extra = document.getElementById('catExtra')?.value || '';
-    
+
     if (!nombre) return;
-    
+
     const body = { nombre };
     if (catalogoActual === 'clientes') body.contacto = extra;
     if (catalogoActual === 'proveedores') body.nit = extra;
-    
+    if (catalogoActual === 'responsables') body.cargo = extra;
+
     try {
         const response = await fetch(`${API_URL}/${catalogoActual}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body)
         });
-        
+
         if (response.ok) {
             mostrarToast('Registro guardado.', 'success');
             await cargarCatalogos();
@@ -1407,9 +1604,26 @@ async function guardarRegistroCatalogo(e) {
 
 async function eliminarRegistroCatalogo(id) {
     if (!confirm('¿Desea eliminar este registro? Los troqueles asociados quedarán sin esta referencia.')) return;
-    
-    // Nota: El backend debería soportar DELETE, aquí lo simplificamos
-    mostrarToast('Función de eliminación de catálogo en desarrollo.', 'info');
+
+    try {
+        const response = await fetch(`${API_URL}/${catalogoActual}/${id}`, {
+            method: 'DELETE'
+        });
+
+        if (response.ok) {
+            mostrarToast('Registro eliminado.', 'success');
+            await cargarCatalogos();
+            verCatalogo(catalogoActual);
+            await cargarDatos();
+            actualizarVista();
+        } else {
+            const errData = await response.json();
+            mostrarToast(`Error al eliminar: ${errData.error || 'error desconocido'}`, 'error');
+        }
+    } catch (err) {
+        console.error('Error al eliminar registro de catálogo:', err);
+        mostrarToast('Error al conectar con el servidor.', 'error');
+    }
 }
 
 // === TEMA ===

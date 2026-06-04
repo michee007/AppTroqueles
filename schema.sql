@@ -49,7 +49,8 @@ CREATE TABLE IF NOT EXISTS responsables (
 CREATE TABLE IF NOT EXISTS troqueles (
     id VARCHAR(50) PRIMARY KEY, -- Formato: TRQ-XXXXXXXX
     nombre VARCHAR(255) NOT NULL,
-    referencia VARCHAR(100) UNIQUE NOT NULL,
+    referencia VARCHAR(100) UNIQUE,
+    op VARCHAR(100),
     
     -- Relaciones Normalizadas
     cliente_id INTEGER REFERENCES clientes(id) ON DELETE SET NULL,

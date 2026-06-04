@@ -27,7 +27,7 @@
         <div class="header-actions">
             <div class="search-box">
                 <i class="fa-solid fa-search"></i>
-                <input type="text" id="searchInput" placeholder="Buscar por nombre, cliente, ref..." aria-label="Buscar troqueles">
+                <input type="text" id="searchInput" placeholder="Buscar por nombre, cliente, ref, OP..." aria-label="Buscar troqueles">
             </div>
             <button class="btn-icon" style="color: var(--dark); font-size: 1.2rem; margin-right: 10px;" onclick="toggleTheme()" id="themeToggleBtn" aria-label="Cambiar tema"><i class="fa-solid fa-moon"></i></button>
             <button class="btn btn-secondary" onclick="exportarExcel()" aria-label="Exportar a Excel"><i class="fa-solid fa-file-excel"></i> Excel</button>
@@ -84,6 +84,7 @@
                         <th class="no-print no-sort">Imagen</th>
                         <th data-sort="nombre" scope="col">Nombre <i class="fa-solid fa-sort sort-icon"></i></th>
                         <th data-sort="referencia" scope="col">Referencia <i class="fa-solid fa-sort sort-icon"></i></th>
+                        <th data-sort="op" scope="col">OP <i class="fa-solid fa-sort sort-icon"></i></th>
                         <th data-sort="cliente" scope="col">Cliente <i class="fa-solid fa-sort sort-icon"></i></th>
                         <th data-sort="ubicacion" scope="col">Ubicación <i class="fa-solid fa-sort sort-icon"></i></th>
                         <th data-sort="cantidad" scope="col">Stock <i class="fa-solid fa-sort sort-icon"></i></th>
@@ -124,9 +125,13 @@
                             <span class="field-error" id="errorNombre">El nombre es obligatorio.</span>
                         </div>
                         <div class="form-group" id="grupoReferencia">
-                            <label for="referencia">Referencia *</label>
-                            <input type="text" id="referencia" required>
-                            <span class="field-error" id="errorReferencia">La referencia es obligatoria y debe ser única.</span>
+                            <label for="referencia">Referencia</label>
+                            <input type="text" id="referencia">
+                            <span class="field-error" id="errorReferencia">Debe ingresar Referencia o OP (o la referencia ya existe).</span>
+                        </div>
+                        <div class="form-group" id="grupoOp">
+                            <label for="op">OP (Orden de Producción)</label>
+                            <input type="text" id="op">
                         </div>
                         <div class="form-group">
                             <label for="cliente_id">Cliente</label>
@@ -288,7 +293,10 @@
             <div class="modal-body" id="printDetalleArea">
                 <div class="detalle-header">
                     <h1 id="detNombre">Nombre</h1>
-                    <span class="badge" id="detRef">REF-001</span>
+                    <div>
+                        <span class="badge" id="detRef">REF-001</span>
+                        <span class="badge" id="detOp" style="background-color: var(--secondary); margin-left: 5px;">OP-001</span>
+                    </div>
                 </div>
                 
                 <div class="detalle-grid">

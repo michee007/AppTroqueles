@@ -24,20 +24,20 @@ app.use(express.static('.')); // Servir archivos estáticos del frontend
 // Helper to compress base64 images using sharp
 async function compressImageBase64(base64Str) {
   if (!base64Str || typeof base64Str !== 'string') return base64Str;
-  
+
   // Check if it's a base64 Data URL (e.g. data:image/jpeg;base64,...)
   const matches = base64Str.match(/^data:(image\/[a-zA-Z0-9-+.]+);base64,(.+)$/);
   if (!matches) {
     return base64Str; // Return original if it's not a Data URL
   }
-  
+
   const base64Data = matches[2];
   const buffer = Buffer.from(base64Data, 'base64');
-  
+
   try {
     let sharpInstance = sharp(buffer);
     const metadata = await sharpInstance.metadata();
-    
+
     // Resize if width or height is larger than 1200px
     const MAX_DIMENSION = 1200;
     if (metadata.width > MAX_DIMENSION || metadata.height > MAX_DIMENSION) {
@@ -48,12 +48,12 @@ async function compressImageBase64(base64Str) {
         withoutEnlargement: true
       });
     }
-    
+
     // Compress and convert to JPEG with quality 75
     const compressedBuffer = await sharpInstance
       .jpeg({ quality: 75, mozjpeg: true })
       .toBuffer();
-      
+
     return `data:image/jpeg;base64,${compressedBuffer.toString('base64')}`;
   } catch (error) {
     console.error('Error compressing image with sharp:', error);
@@ -199,10 +199,13 @@ app.get('/api/troqueles', async (req, res) => {
 
 app.post('/api/troqueles', async (req, res) => {
   const {
-    id, nombre, referencia, cliente_id, ubicacion, proveedor_id,
+    id, nombre, referencia, op, cliente_id, ubicacion, proveedor_id,
     cantidad, cavidades, costo, ancho, profundo, alto, fecha_ingreso, estado, observaciones,
     imagenes, mantenimientos, fecha_depuracion, razon_depuracion
   } = req.body;
+
+  const dbReferencia = (referencia && referencia.trim() !== '') ? referencia.trim() : null;
+  const dbOp = (op && op.trim() !== '') ? op.trim() : null;
 
   const client = await pool.connect();
   try {
@@ -210,13 +213,14 @@ app.post('/api/troqueles', async (req, res) => {
 
     const insertQuery = `
       INSERT INTO troqueles (
-        id, nombre, referencia, cliente_id, ubicacion, proveedor_id, 
+        id, nombre, referencia, op, cliente_id, ubicacion, proveedor_id, 
         cantidad, cavidades, costo, ancho, profundo, alto, fecha_ingreso, estado, observaciones,
         fecha_depuracion, razon_depuracion
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
       ON CONFLICT (id) DO UPDATE SET
         nombre = EXCLUDED.nombre,
         referencia = EXCLUDED.referencia,
+        op = EXCLUDED.op,
         cliente_id = EXCLUDED.cliente_id,
         ubicacion = EXCLUDED.ubicacion,
         proveedor_id = EXCLUDED.proveedor_id,
@@ -236,7 +240,7 @@ app.post('/api/troqueles', async (req, res) => {
     `;
 
     const resTroquel = await client.query(insertQuery, [
-      id, nombre, referencia, cliente_id, ubicacion, proveedor_id,
+      id, nombre, dbReferencia, dbOp, cliente_id, ubicacion, proveedor_id,
       cantidad, cavidades, costo, ancho, profundo, alto, fecha_ingreso, estado, observaciones,
       fecha_depuracion, razon_depuracion
     ]);

@@ -1,4 +1,4 @@
-const API_URL = 'http://192.168.2.245:3000/api';
+const API_URL = 'http://192.168.2.50:3002/api';
 let troqueles = []; // Ahora se carga desde la DB
 let catalogos = { clientes: [], proveedores: [], responsables: [] };
 let imagenesTemp = [];
@@ -312,7 +312,8 @@ function obtenerDatosFiltrados() {
         filtrados = filtrados.filter(t =>
             t.nombre.toLowerCase().includes(query) ||
             (t.cliente_nombre && t.cliente_nombre.toLowerCase().includes(query)) ||
-            t.referencia.toLowerCase().includes(query) ||
+            (t.referencia && t.referencia.toLowerCase().includes(query)) ||
+            (t.op && t.op.toLowerCase().includes(query)) ||
             (t.proveedor_nombre && t.proveedor_nombre.toLowerCase().includes(query)) ||
             (isQueryNum && (
                 Number(t.ancho) === queryNum ||
@@ -434,7 +435,8 @@ function renderTabla(datos, ignorarPaginacion = false, mostrarTotal = false) {
                 <img src="${portada}" class="img-thumbnail" alt="Miniatura de ${escapeHTML(troquel.nombre)}" loading="lazy">
             </td>
             <td><strong>${escapeHTML(troquel.nombre)}</strong></td>
-            <td><code>${escapeHTML(troquel.referencia)}</code></td>
+            <td><code>${escapeHTML(troquel.referencia || '-')}</code></td>
+            <td><code>${escapeHTML(troquel.op || '-')}</code></td>
             <td>${escapeHTML(troquel.cliente_nombre) || '<span class="text-light">N/A</span>'}</td>
             <td>${escapeHTML(troquel.ubicacion) || '<span class="text-light">-</span>'}</td>
             <td>${troquel.cantidad}</td>
@@ -666,6 +668,7 @@ function guardarTroquel(e) {
 
     const nombre = document.getElementById('nombre').value.trim();
     const referencia = document.getElementById('referencia').value.trim();
+    const op = document.getElementById('op').value.trim();
     const cantidad = parseInt(document.getElementById('cantidad').value) || 0;
     const costoInput = document.getElementById('costo');
     const costoVal = parseFloat(costoInput.value) || 0;
@@ -675,16 +678,18 @@ function guardarTroquel(e) {
     document.querySelectorAll('.form-group.has-error').forEach(g => g.classList.remove('has-error'));
 
     if (!nombre) { document.getElementById('grupoNombre').classList.add('has-error'); errores = true; }
-    if (!referencia) {
+    if (!referencia && !op) {
         document.getElementById('grupoReferencia').classList.add('has-error');
-        document.getElementById('errorReferencia').textContent = 'La referencia es obligatoria.';
+        document.getElementById('errorReferencia').textContent = 'Debe ingresar Referencia o OP.';
         errores = true;
     } else {
-        const duplicada = troqueles.find(t => t.referencia.toLowerCase() === referencia.toLowerCase() && t.id !== editId);
-        if (duplicada) {
-            document.getElementById('grupoReferencia').classList.add('has-error');
-            document.getElementById('errorReferencia').textContent = 'Esta referencia ya existe.';
-            errores = true;
+        if (referencia) {
+            const duplicada = troqueles.find(t => t.referencia && t.referencia.toLowerCase() === referencia.toLowerCase() && t.id !== editId);
+            if (duplicada) {
+                document.getElementById('grupoReferencia').classList.add('has-error');
+                document.getElementById('errorReferencia').textContent = 'Esta referencia ya existe.';
+                errores = true;
+            }
         }
     }
     if (cantidad < 0) { document.getElementById('grupoCantidad').classList.add('has-error'); errores = true; }
@@ -714,6 +719,7 @@ function guardarTroquel(e) {
         id: id,
         nombre: nombre,
         referencia: referencia,
+        op: op,
         cliente_id: parseInt(document.getElementById('cliente_id').value) || null,
         ubicacion: document.getElementById('ubicacion').value.trim() || null,
         proveedor_id: parseInt(document.getElementById('proveedor_id').value) || null,
@@ -816,7 +822,8 @@ function editarTroquel(id) {
     document.getElementById('modalTitle').textContent = 'Editar Troquel';
     document.getElementById('troquelId').value = troquel.id;
     document.getElementById('nombre').value = troquel.nombre;
-    document.getElementById('referencia').value = troquel.referencia;
+    document.getElementById('referencia').value = troquel.referencia || '';
+    document.getElementById('op').value = troquel.op || '';
     document.getElementById('cliente_id').value = troquel.cliente_id || '';
     document.getElementById('ubicacion').value = troquel.ubicacion || '';
     document.getElementById('cantidad').value = troquel.cantidad;
@@ -924,7 +931,14 @@ function verDetalle(id) {
     if (!troquel) return;
 
     document.getElementById('detNombre').textContent = troquel.nombre;
-    document.getElementById('detRef').textContent = troquel.referencia;
+    document.getElementById('detRef').textContent = troquel.referencia || 'SIN REF';
+    const detOp = document.getElementById('detOp');
+    if (troquel.op) {
+        detOp.textContent = troquel.op;
+        detOp.style.display = 'inline-block';
+    } else {
+        detOp.style.display = 'none';
+    }
     document.getElementById('detCliente').textContent = troquel.cliente_nombre || 'N/A';
     document.getElementById('detUbicacion').textContent = troquel.ubicacion || 'N/A';
     document.getElementById('detCantidad').textContent = troquel.cantidad;
@@ -1050,7 +1064,8 @@ function exportarExcel() {
 
         const datosExcel = datosExportar.map(t => ({
             Nombre: t.nombre,
-            Referencia: t.referencia,
+            Referencia: t.referencia || '-',
+            OP: t.op || '-',
             Cliente: t.cliente_nombre || '-',
             Ubicación: t.ubicacion || '-',
             Cantidad: t.cantidad,
@@ -1133,7 +1148,7 @@ function exportarDetallePDF() {
 
         // ── TABLA DE DATOS ─────────────────────────────────────
         const filas = [
-            ['Nombre', troquel.nombre || '-', 'Referencia', troquel.referencia || '-'],
+            ['Nombre', troquel.nombre || '-', 'Ref / OP', (troquel.referencia || '-') + ' / ' + (troquel.op || '-')],
             ['Cliente', troquel.cliente_nombre || 'N/A', 'Ubicación', troquel.ubicacion || 'N/A'],
             ['Proveedor', troquel.proveedor_nombre || 'N/A', 'Fecha Ingreso', formatearFecha(troquel.fecha_ingreso) || 'N/A'],
             ['Cantidad', String(troquel.cantidad || 0), 'Cavidades', String(troquel.cavidades || 0)],
@@ -1427,6 +1442,7 @@ function exportarListaPDF() {
         const filas = datosParaPDF.map(t => [
             t.nombre || '-',
             t.referencia || '-',
+            t.op || '-',
             t.cliente_nombre || '-',
             t.ubicacion || '-',
             formatearFecha(t.fecha_ingreso) || '-',
@@ -1439,7 +1455,7 @@ function exportarListaPDF() {
         doc.autoTable({
             startY: y,
             margin: { left: marginL, right: 10 },
-            head: [['Nombre', 'Referencia', 'Cliente', 'Ubicación', 'Fecha Ingr.', 'Cant.', 'Costo', 'Total', 'Estado']],
+            head: [['Nombre', 'Referencia', 'OP', 'Cliente', 'Ubicación', 'Fecha Ingr.', 'Cant.', 'Costo', 'Total', 'Estado']],
             body: filas,
             styles: {
                 fontSize: 8,

@@ -19,4 +19,8 @@ WHERE t.ubicacion_id = u.id;
 -- 4. Eliminar la restricción foránea y la columna antigua (Opcional, pero recomendado para completar el desacoplamiento)
 ALTER TABLE troqueles DROP COLUMN IF EXISTS ubicacion_id;
 
+-- 5. Agregar columna op y modificar referencia
+ALTER TABLE troqueles ADD COLUMN IF NOT EXISTS op VARCHAR(100);
+ALTER TABLE troqueles ALTER COLUMN referencia DROP NOT NULL;
+
 COMMIT;

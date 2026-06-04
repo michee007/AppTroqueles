@@ -1,6 +1,7 @@
 const express = require('express');
 const { Pool } = require('pg');
 const cors = require('cors');
+const sharp = require('sharp');
 require('dotenv').config();
 
 const app = express();
@@ -19,6 +20,46 @@ const pool = new Pool({
 app.use(cors());
 app.use(express.json({ limit: '50mb' })); // Aumentar límite para imágenes Base64
 app.use(express.static('.')); // Servir archivos estáticos del frontend
+
+// Helper to compress base64 images using sharp
+async function compressImageBase64(base64Str) {
+  if (!base64Str || typeof base64Str !== 'string') return base64Str;
+  
+  // Check if it's a base64 Data URL (e.g. data:image/jpeg;base64,...)
+  const matches = base64Str.match(/^data:(image\/[a-zA-Z0-9-+.]+);base64,(.+)$/);
+  if (!matches) {
+    return base64Str; // Return original if it's not a Data URL
+  }
+  
+  const base64Data = matches[2];
+  const buffer = Buffer.from(base64Data, 'base64');
+  
+  try {
+    let sharpInstance = sharp(buffer);
+    const metadata = await sharpInstance.metadata();
+    
+    // Resize if width or height is larger than 1200px
+    const MAX_DIMENSION = 1200;
+    if (metadata.width > MAX_DIMENSION || metadata.height > MAX_DIMENSION) {
+      sharpInstance = sharpInstance.resize({
+        width: metadata.width > metadata.height ? MAX_DIMENSION : null,
+        height: metadata.height >= metadata.width ? MAX_DIMENSION : null,
+        fit: 'inside',
+        withoutEnlargement: true
+      });
+    }
+    
+    // Compress and convert to JPEG with quality 75
+    const compressedBuffer = await sharpInstance
+      .jpeg({ quality: 75, mozjpeg: true })
+      .toBuffer();
+      
+    return `data:image/jpeg;base64,${compressedBuffer.toString('base64')}`;
+  } catch (error) {
+    console.error('Error compressing image with sharp:', error);
+    return base64Str; // Fallback to original image if processing fails
+  }
+}
 
 // === RUTAS PARA CATÁLOGOS ===
 
@@ -205,7 +246,8 @@ app.post('/api/troqueles', async (req, res) => {
       await client.query('DELETE FROM imagenes_troquel WHERE troquel_id = $1', [id]);
       if (Array.isArray(imagenes)) {
         for (let img of imagenes) {
-          await client.query('INSERT INTO imagenes_troquel (troquel_id, datos_base64) VALUES ($1, $2)', [id, img]);
+          const compressedImg = await compressImageBase64(img);
+          await client.query('INSERT INTO imagenes_troquel (troquel_id, datos_base64) VALUES ($1, $2)', [id, compressedImg]);
         }
       }
     }
@@ -218,10 +260,11 @@ app.post('/api/troqueles', async (req, res) => {
           // El responsable puede ser un ID o un nombre (tenemos que manejarlo)
           // Para simplificar, buscaremos el ID si viene como nombre o usaremos el ID directamente
           let respId = m.responsable_id || null;
+          const compressedFoto = m.foto ? await compressImageBase64(m.foto) : null;
 
           await client.query(
             'INSERT INTO mantenimientos (troquel_id, fecha, trabajo, costo, responsable_id, foto) VALUES ($1, $2, $3, $4, $5, $6)',
-            [id, m.fecha || new Date(), m.trabajo, m.costo || 0, respId, m.foto]
+            [id, m.fecha || new Date(), m.trabajo, m.costo || 0, respId, compressedFoto]
           );
         }
       }

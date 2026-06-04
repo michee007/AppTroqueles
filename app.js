@@ -633,13 +633,11 @@ function abrirSelectorFotoMantenimiento(id) {
     input.onchange = (e) => {
         const file = e.target.files[0];
         if (file) {
-            const reader = new FileReader();
-            reader.onload = (event) => {
+            comprimirImagen(file, (base64) => {
                 const img = document.getElementById('img-' + id);
-                img.src = event.target.result;
+                img.src = base64;
                 img.classList.remove('hidden');
-            };
-            reader.readAsDataURL(file);
+            });
         }
     };
     input.click();
